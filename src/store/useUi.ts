@@ -1,0 +1,42 @@
+import { create } from 'zustand';
+import type { Format, Id } from '../model/types';
+
+export type RelationMode = 'fk' | 'note' | 'nn';
+
+interface UiState {
+  selectedNodes: Id[];
+  selectedEdges: Id[];
+  relationMode: RelationMode;
+  /** Primeiro clique do modo relação (clique-clique) */
+  relationSource: Id | null;
+  editing: { kind: 'table-name' | 'column' | 'note'; id: Id; colId?: Id } | null;
+  panelOpen: boolean;
+  panelTab: Format;
+  panelWidth: number;
+  exportOpen: boolean;
+  helpOpen: boolean;
+  toast: string | null;
+  set: (p: Partial<UiState>) => void;
+}
+
+export const useUi = create<UiState>((set) => ({
+  selectedNodes: [],
+  selectedEdges: [],
+  relationMode: 'fk',
+  relationSource: null,
+  editing: null,
+  panelOpen: true,
+  panelTab: 'sql',
+  panelWidth: 520,
+  exportOpen: false,
+  helpOpen: false,
+  toast: null,
+  set: (p) => set(p),
+}));
+
+let toastTimer: ReturnType<typeof setTimeout> | undefined;
+export function showToast(msg: string) {
+  useUi.getState().set({ toast: msg });
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => useUi.getState().set({ toast: null }), 2600);
+}
