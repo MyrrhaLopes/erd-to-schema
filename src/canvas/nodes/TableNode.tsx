@@ -4,7 +4,7 @@ import { KeyRound, Link2, Plus } from 'lucide-react';
 import type { Column, Table } from '../../model/types';
 import { formatType, parseTypeString, COMMON_TYPES } from '../../model/columnType';
 import { addColumn, resizeNode, updateTable } from '../../store/actions';
-import { useUi } from '../../store/useUi';
+import { useUi, revealTableInCode } from '../../store/useUi';
 
 export type TableNodeData = {
   table: Table;
@@ -131,6 +131,10 @@ function TableNodeImpl({ id, data, selected }: NodeProps<TableFlowNode>) {
         (relationTarget ? ' ring-2 ring-emerald-300' : '')
       }
       style={{ width: '100%' }}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        revealTableInCode(table.id);
+      }}
     >
       {selected && (
         <NodeResizeControl

@@ -73,10 +73,15 @@ describe('Drizzle', () => {
     if (!r2.ok) expect(r2.diagnostics[0].message).toMatch(/notDefined/);
   });
 
-  it('keeps table/column comments (not expressible in drizzle)', async () => {
+  it('reflects SQL comments into the generated Drizzle code (not read back, not expressible in drizzle)', async () => {
     const base = reconcile(emptyProject(), await sql(`CREATE TABLE a (id serial PRIMARY KEY); COMMENT ON TABLE a IS 'hello'; COMMENT ON COLUMN a.id IS 'pk';`), 'sql', columnSql);
-    const ts = generateDrizzle(base).replace("id: serial('id').primaryKey(),", "id: serial('id').primaryKey(),\n  name: text('name'),").replace('import { pgTable, serial }', 'import { pgTable, serial, text }');
-    const r = reconcile(base, drizzle(ts), 'drizzle', drizzleColumnSignature);
+    const ts = generateDrizzle(base);
+    // os comentários do SQL aparecem como comentários de código no Drizzle…
+    expect(ts).toContain('// hello');
+    expect(ts).toContain('// pk');
+    const ts2 = ts.replace("id: serial('id').primaryKey(),", "id: serial('id').primaryKey(),\n  name: text('name'),").replace('import { pgTable, serial }', 'import { pgTable, serial, text }');
+    // …mas, como comentários JS somem ao executar o código, o modelo continua sendo a fonte da verdade
+    const r = reconcile(base, drizzle(ts2), 'drizzle', drizzleColumnSignature);
     const out = generateSql(r);
     expect(out).toContain("COMMENT ON TABLE a IS 'hello'");
     expect(out).toContain("COMMENT ON COLUMN a.id IS 'pk'");

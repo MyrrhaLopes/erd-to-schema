@@ -80,6 +80,11 @@ export function directiveLines(project: Project, format: Format): string[] {
     let s = `${p} @erd:ref ${endpoint(schema, r.fromTable, r.fromColumns)} -> ${endpoint(schema, r.toTable, r.toColumns)}`;
     if (r.cardinality) s += ' ' + r.cardinality;
     if (r.label) s += ' ' + JSON.stringify(r.label);
+    if (r.showReverse) {
+      s += ' reverse';
+      if (r.reverseCardinality) s += ' ' + r.reverseCardinality;
+      if (r.reverseLabel) s += ' ' + JSON.stringify(r.reverseLabel);
+    }
     lines.push(s);
   }
   for (const t of schema.tables) {
@@ -136,8 +141,18 @@ export function applyDirectives(parsed: ParsedSchema, directives: RawDirective[]
         warn('@erd:ref: coluna não encontrada');
         continue;
       }
-      const card = rest.match(/^(1:1|1:N|N:1|N:N)\b/i);
-      const labelMatch = rest.match(/"((?:[^"\\]|\\.)*)"/);
+      const card = rest.match(/^(1:1|1:N|N:1|N:N|0:1|0:N)\b/i);
+      const labels = [...rest.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((m) => JSON.parse(`"${m[1]}"`));
+      const hasReverse = /\breverse\b/i.test(rest);
+      let reverseCard: Cardinality | undefined;
+      if (hasReverse) {
+        const reverseIdx = rest.search(/\breverse\b/i);
+        const reversePart = rest.slice(reverseIdx + 7).trim();
+        const rCardMatch = reversePart.match(/^(1:1|1:N|N:1|N:N|0:1|0:N)\b/i);
+        if (rCardMatch) reverseCard = rCardMatch[1].toUpperCase() as Cardinality;
+      }
+      const label = labels[0];
+      const reverseLabel = hasReverse ? labels[1] : undefined;
       schema.relationships.push({
         id: newId('r_'),
         kind: 'note',
@@ -146,7 +161,10 @@ export function applyDirectives(parsed: ParsedSchema, directives: RawDirective[]
         toTable: to.id,
         toColumns: tc as Id[],
         cardinality: card ? (card[1].toUpperCase() as Cardinality) : undefined,
-        label: labelMatch ? JSON.parse(`"${labelMatch[1]}"`) : undefined,
+        label,
+        showReverse: hasReverse ? true : undefined,
+        reverseLabel,
+        reverseCardinality: reverseCard,
       });
     } else {
       const m = d.body.match(/^([A-Za-z0-9_.$"]+)\s+(.+)$/);

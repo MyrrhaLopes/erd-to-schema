@@ -43,26 +43,30 @@ export function Toolbar() {
           <span className="absolute bottom-0.5 right-1 text-[8px] text-slate-400">{t === 'hand' ? 'H' : t === 'eraser' ? 0 : i === 0 ? 1 : i}</span>
         </button>
       ))}
-      <div className="mx-1 h-6 w-px bg-slate-200" />
-      <div className="flex items-center gap-0.5" title="Tipo de relação criada ao conectar">
-        {MODES.map((m) => (
-          <button
-            key={m.mode}
-            title={m.title}
-            onClick={() => set({ relationMode: m.mode })}
-            className={
-              'h-7 rounded-md px-2 text-[11px] font-medium ' +
-              (mode === m.mode
-                ? m.mode === 'note'
-                  ? 'bg-purple-100 text-purple-700'
-                  : 'bg-indigo-100 text-indigo-700'
-                : 'text-slate-500 hover:bg-slate-100')
-            }
-          >
-            {m.label}
-          </button>
-        ))}
-      </div>
+      {tool === 'relation' && (
+        <>
+          <div className="mx-1 h-6 w-px bg-slate-200" />
+          <div className="flex items-center gap-0.5" title="Tipo de relação criada ao conectar">
+            {MODES.map((m) => (
+              <button
+                key={m.mode}
+                title={m.title}
+                onClick={() => set({ relationMode: m.mode })}
+                className={
+                  'h-7 rounded-md px-2 text-[11px] font-medium ' +
+                  (mode === m.mode
+                    ? m.mode === 'note'
+                      ? 'bg-purple-100 text-purple-700'
+                      : 'bg-indigo-100 text-indigo-700'
+                    : 'text-slate-500 hover:bg-slate-100')
+                }
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

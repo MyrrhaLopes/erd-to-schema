@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Download, Plus, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Code2, Download, Plus, Table2, Trash2, X } from 'lucide-react';
 import type { Cardinality, Id, RefAction, Table } from '../model/types';
 import { REF_ACTIONS } from '../model/types';
 import { formatType, parseTypeString } from '../model/columnType';
@@ -7,9 +7,10 @@ import { newId } from '../model/naming';
 import { columnById, relCardinality, tableById } from '../model/schema';
 import { autoTags, effectiveTags } from '../model/tags';
 import { useProjectStore } from '../store/useProjectStore';
-import { useUi } from '../store/useUi';
+import { useUi, revealTableInCode } from '../store/useUi';
 import {
   addColumn,
+  convertNoteToPivot,
   deleteElements,
   moveColumn,
   removeColumn,
@@ -223,6 +224,15 @@ function ColumnEditor({ table, colId }: { table: Table; colId: Id }) {
   );
 }
 
+const CARD_OPTIONS: { value: Cardinality; label: string }[] = [
+  { value: '1:1', label: '1:1' },
+  { value: '0:1', label: '0:1 (lado único opcional)' },
+  { value: '1:N', label: '1:N' },
+  { value: '0:N', label: '0:N (lado único opcional)' },
+  { value: 'N:1', label: 'N:1' },
+  { value: 'N:N', label: 'N:N' },
+];
+
 const colsToNames = (t: Table, ids: Id[]) => ids.map((i) => columnById(t, i)?.name ?? '?').join(', ');
 const namesToCols = (t: Table, s: string) =>
   s
@@ -251,6 +261,12 @@ function TableInspector({ table }: { table: Table }) {
           Comentário
           <CommitInput multiline value={table.comment ?? ''} onCommit={(v) => updateTable(table.id, (t) => void (t.comment = v.trim() || undefined))} />
         </label>
+        <button
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 py-1.5 text-[11.5px] font-medium text-slate-600 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
+          onClick={() => revealTableInCode(table.id)}
+        >
+          <Code2 size={13} /> Ver em código
+        </button>
       </div>
       <Section title="Tags">
         <TagEditor id={table.id} />
@@ -416,22 +432,75 @@ function RelationshipInspector({ id }: { id: Id }) {
       ) : (
         <>
           <label className="block text-[10px] text-slate-500">
-            Rótulo
+            Rótulo (A → B)
             <CommitInput value={r.label ?? ''} onCommit={(v) => updateRelationship(id, (x) => void (x.label = v.trim() || undefined))} />
           </label>
           <label className="block text-[10px] text-slate-500">
-            Cardinalidade
+            Cardinalidade (A → B)
             <select
               value={r.cardinality ?? ''}
               onChange={(e) => updateRelationship(id, (x) => void (x.cardinality = (e.target.value || undefined) as Cardinality))}
               className="w-full rounded border border-slate-200 bg-white px-1 py-1 text-[12px]"
             >
               <option value="">—</option>
-              {['1:1', '1:N', 'N:1', 'N:N'].map((c) => (
-                <option key={c}>{c}</option>
+              {CARD_OPTIONS.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
               ))}
             </select>
           </label>
+          <label
+            className="flex cursor-pointer items-center gap-1.5 text-[11px] text-slate-600"
+            title="Exibe também o nome da relação no sentido contrário (B → A)"
+          >
+            <input
+              type="checkbox"
+              checked={!!r.showReverse}
+              onChange={() => updateRelationship(id, (x) => void (x.showReverse = !x.showReverse))}
+              className="accent-purple-600"
+            />
+            Mostrar relação reversa
+          </label>
+          {r.showReverse && (
+            <>
+              <label className="block text-[10px] text-slate-500">
+                Nome no sentido contrário (B → A)
+                <CommitInput
+                  value={r.reverseLabel ?? ''}
+                  placeholder="ex.: pertence a"
+                  onCommit={(v) => updateRelationship(id, (x) => void (x.reverseLabel = v.trim() || undefined))}
+                />
+              </label>
+              <label className="block text-[10px] text-slate-500">
+                Cardinalidade reversa (B → A)
+                <select
+                  value={r.reverseCardinality ?? ''}
+                  onChange={(e) => updateRelationship(id, (x) => void (x.reverseCardinality = (e.target.value || undefined) as Cardinality))}
+                  className="w-full rounded border border-slate-200 bg-white px-1 py-1 text-[12px]"
+                >
+                  <option value="">—</option>
+                  {CARD_OPTIONS.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          )}
+          {r.cardinality === 'N:N' && r.showReverse && r.reverseCardinality === 'N:N' && (
+            <div className="mt-1 rounded-lg border border-purple-200 bg-purple-50/70 p-2 text-center">
+              <div className="text-[10.5px] font-medium text-purple-900">Relação N:N bidirecional</div>
+              <button
+                className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded bg-purple-600 px-2 py-1.5 text-[11px] font-semibold text-white shadow-xs hover:bg-purple-700 transition-colors"
+                onClick={() => convertNoteToPivot(id)}
+                title="Cria uma tabela pivot real conectando as duas tabelas com chaves estrangeiras"
+              >
+                <Table2 size={13} /> Converter em tabela pivot
+              </button>
+            </div>
+          )}
           {r.fromColumns.length > 0 && r.fromColumns.length === r.toColumns.length && (
             <button className="rounded bg-slate-100 px-2 py-1 text-slate-700 hover:bg-slate-200" onClick={() => updateRelationship(id, (x) => void (x.kind = 'fk'))}>
               Converter em FK real

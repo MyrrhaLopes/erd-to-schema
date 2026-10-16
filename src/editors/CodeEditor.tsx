@@ -18,6 +18,9 @@ interface Props {
   onBlur?: () => void;
   readOnly?: boolean;
   className?: string;
+  /** Posição (offset) a rolar e selecionar — só dispara quando `revealToken` muda */
+  revealOffset?: number | null;
+  revealToken?: number | null;
 }
 
 const theme = EditorView.theme({
@@ -28,7 +31,7 @@ const theme = EditorView.theme({
   '&.cm-focused': { outline: 'none' },
 });
 
-export function CodeEditor({ value, language, diagnostics, onChange, onSave, onBlur, readOnly, className }: Props) {
+export function CodeEditor({ value, language, diagnostics, onChange, onSave, onBlur, readOnly, className, revealOffset, revealToken }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const handlers = useRef({ onChange, onSave, onBlur });
@@ -106,6 +109,20 @@ export function CodeEditor({ value, language, diagnostics, onChange, onSave, onB
     });
     v.dispatch(setDiagnostics(v.state, diags));
   }, [diagnostics, value]);
+
+  // "ver em código": rola até a posição pedida e seleciona a linha — só no gatilho (revealToken), nunca ao digitar
+  useEffect(() => {
+    const v = view.current;
+    if (!v || revealToken == null || revealOffset == null) return;
+    const pos = Math.max(0, Math.min(v.state.doc.length, revealOffset));
+    const line = v.state.doc.lineAt(pos);
+    v.dispatch({
+      selection: { anchor: line.from, head: line.to },
+      effects: EditorView.scrollIntoView(line.from, { y: 'center' }),
+    });
+    v.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealToken]);
 
   return <div ref={host} className={className} />;
 }

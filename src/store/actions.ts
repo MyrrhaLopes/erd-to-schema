@@ -65,16 +65,26 @@ function addFkColumns(from: Draft<Table>, to: Draft<Table>, nullable = false): I
   return ids;
 }
 
-export function connectTables(fromId: Id, toId: Id, mode: 'fk' | 'note' | 'nn', cols?: { from?: Id; to?: Id }) {
-  if (mode === 'nn') return createPivot(fromId, toId);
+export interface ConnectResult {
+  kind: 'edge' | 'node';
+  id: Id;
+}
+
+export function connectTables(fromId: Id, toId: Id, mode: 'fk' | 'note' | 'nn', cols?: { from?: Id; to?: Id }): ConnectResult | undefined {
+  if (mode === 'nn') {
+    const id = createPivot(fromId, toId);
+    return id ? { kind: 'node', id } : undefined;
+  }
+  let relId = '';
   commit(
     (d) => {
       const from = d.schema.tables.find((t) => t.id === fromId);
       const to = d.schema.tables.find((t) => t.id === toId);
       if (!from || !to) return;
       if (mode === 'note') {
+        relId = newId('r_');
         d.schema.relationships.push({
-          id: newId('r_'),
+          id: relId,
           kind: 'note',
           fromTable: fromId,
           fromColumns: cols?.from ? [cols.from] : [],
@@ -96,8 +106,9 @@ export function connectTables(fromId: Id, toId: Id, mode: 'fk' | 'note' | 'nn', 
         fromCols = addFkColumns(from, to);
         toCols = [...to.primaryKey];
       }
+      relId = newId('r_');
       d.schema.relationships.push({
-        id: newId('r_'),
+        id: relId,
         kind: 'fk',
         fromTable: fromId,
         fromColumns: fromCols,
@@ -109,10 +120,12 @@ export function connectTables(fromId: Id, toId: Id, mode: 'fk' | 'note' | 'nn', 
     },
     [mode === 'fk' ? 'Relação FK criada' : 'Relação-nota criada'],
   );
+  return relId ? { kind: 'edge', id: relId } : undefined;
 }
 
 /** N:N sempre materializa uma tabela pivot real com PK composta */
-export function createPivot(aId: Id, bId: Id) {
+export function createPivot(aId: Id, bId: Id): Id | undefined {
+  let pivotId: Id | undefined;
   commit((d) => {
     const a = d.schema.tables.find((t) => t.id === aId);
     const b = d.schema.tables.find((t) => t.id === bId);
@@ -131,7 +144,39 @@ export function createPivot(aId: Id, bId: Id) {
     );
     d.meta[p.id] = { ...(d.meta[p.id] ?? {}), provenance: { kind: 'pivot', a: aId, b: bId } };
     d.layout[p.id] = findFreeSpot(d as Doc, p.id, pos);
+    pivotId = p.id;
   }, ['Tabela pivot N:N criada']);
+  return pivotId;
+}
+
+/** Converte uma relação-nota em tabela pivot real com PK composta */
+export function convertNoteToPivot(relId: Id) {
+  commit((d) => {
+    const rel = d.schema.relationships.find((x) => x.id === relId);
+    if (!rel || rel.kind !== 'note') return;
+    const aId = rel.fromTable;
+    const bId = rel.toTable;
+    const a = d.schema.tables.find((t) => t.id === aId);
+    const b = d.schema.tables.find((t) => t.id === bId);
+    if (!a || !b) return;
+
+    d.schema.relationships = d.schema.relationships.filter((x) => x.id !== relId);
+
+    const la = d.layout[aId];
+    const lb = d.layout[bId];
+    const pos = la && lb ? { x: (la.x + lb.x) / 2, y: Math.max(la.y, lb.y) + 220 } : { x: 0, y: 0 };
+    const pivot = newTable(d, `${singularize(a.name)}_${b.name}`, pos, { withId: false });
+    const p = d.schema.tables.find((t) => t.id === pivot.id)!;
+    const ca = addFkColumns(p, a);
+    const cb = addFkColumns(p, b);
+    p.primaryKey = [...ca, ...cb];
+    d.schema.relationships.push(
+      { id: newId('r_'), kind: 'fk', fromTable: p.id, fromColumns: ca, toTable: aId, toColumns: [...a.primaryKey], onDelete: 'cascade', onUpdate: 'no action' },
+      { id: newId('r_'), kind: 'fk', fromTable: p.id, fromColumns: cb, toTable: bId, toColumns: [...b.primaryKey], onDelete: 'cascade', onUpdate: 'no action' },
+    );
+    d.meta[p.id] = { ...(d.meta[p.id] ?? {}), provenance: { kind: 'pivot', a: aId, b: bId } };
+    d.layout[p.id] = findFreeSpot(d as Doc, p.id, pos);
+  }, ['Relação-nota convertida em tabela pivot N:N']);
 }
 
 export type Direction = 'up' | 'down' | 'left' | 'right';

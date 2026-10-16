@@ -16,6 +16,8 @@ interface UiState {
   exportOpen: boolean;
   helpOpen: boolean;
   toast: string | null;
+  /** Pedido de "ver em código": abre o painel e pede ao editor pra rolar até a definição da tabela */
+  jumpToTable: { id: Id; nonce: number } | null;
   set: (p: Partial<UiState>) => void;
 }
 
@@ -31,6 +33,7 @@ export const useUi = create<UiState>((set) => ({
   exportOpen: false,
   helpOpen: false,
   toast: null,
+  jumpToTable: null,
   set: (p) => set(p),
 }));
 
@@ -39,4 +42,9 @@ export function showToast(msg: string) {
   useUi.getState().set({ toast: msg });
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => useUi.getState().set({ toast: null }), 2600);
+}
+
+/** Abre o painel de código e pede pra rolar até a definição da tabela (aba atual) */
+export function revealTableInCode(id: Id) {
+  useUi.getState().set({ panelOpen: true, jumpToTable: { id, nonce: Date.now() } });
 }

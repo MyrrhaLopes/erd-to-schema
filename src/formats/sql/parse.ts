@@ -65,6 +65,209 @@ function typeOf(tn: Node): ColumnType {
   return t;
 }
 
+function escapeRegex(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function cleanBlockComment(raw: string): string {
+  return raw
+    .split('\n')
+    .map((l) => l.trim().replace(/^\*\s?/, '').trim())
+    .filter(Boolean)
+    .join('\n');
+}
+
+function extractSqlCommentFromLine(line: string): string | undefined {
+  let inString = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === "'") {
+      if (inString && line[i + 1] === "'") {
+        i++;
+      } else {
+        inString = !inString;
+      }
+    } else if (!inString) {
+      if (ch === '-' && line[i + 1] === '-') {
+        const comment = line.slice(i + 2).trim();
+        return comment || undefined;
+      }
+      if (ch === '/' && line[i + 1] === '*') {
+        const end = line.indexOf('*/', i + 2);
+        const comment = (end >= 0 ? line.slice(i + 2, end) : line.slice(i + 2)).trim();
+        return cleanBlockComment(comment) || undefined;
+      }
+    }
+  }
+  return undefined;
+}
+
+function extractColumnComments(bodyText: string, columns: Column[]): Map<string, string> {
+  const result = new Map<string, string>();
+  const lines = bodyText.split('\n');
+  let pendingComments: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i];
+    const trimmed = rawLine.trim();
+    if (!trimmed) {
+      pendingComments = [];
+      continue;
+    }
+
+    if (trimmed.startsWith('--')) {
+      const c = trimmed.slice(2).trim();
+      if (!/@erd:/.test(c) && c) pendingComments.push(c);
+      continue;
+    }
+
+    if (trimmed.startsWith('/*')) {
+      let blockContent = '';
+      if (trimmed.endsWith('*/') && trimmed.length >= 4) {
+        blockContent = trimmed.slice(2, -2);
+      } else {
+        const blockLines = [trimmed.slice(2)];
+        while (++i < lines.length) {
+          const bl = lines[i];
+          const endIdx = bl.indexOf('*/');
+          if (endIdx >= 0) {
+            blockLines.push(bl.slice(0, endIdx));
+            break;
+          }
+          blockLines.push(bl);
+        }
+        blockContent = blockLines.join('\n');
+      }
+      const cleaned = cleanBlockComment(blockContent);
+      if (cleaned && !/@erd:/.test(cleaned)) pendingComments.push(cleaned);
+      continue;
+    }
+
+    let matchedCol: Column | undefined;
+    for (const col of columns) {
+      const escaped = escapeRegex(col.name);
+      const pattern = new RegExp(`^\\s*(?:"${escaped}"|\`${escaped}\`|${escaped})\\b`, 'i');
+      if (pattern.test(rawLine)) {
+        matchedCol = col;
+        break;
+      }
+    }
+
+    if (matchedCol) {
+      const inline = extractSqlCommentFromLine(rawLine);
+      const docs = [...pendingComments];
+      if (inline && !/@erd:/.test(inline) && !docs.includes(inline)) {
+        docs.push(inline);
+      }
+      if (docs.length > 0) {
+        result.set(matchedCol.name, docs.join('\n'));
+      }
+      pendingComments = [];
+    } else if (/^\s*(CONSTRAINT|PRIMARY\s+KEY|UNIQUE|CHECK|FOREIGN\s+KEY)\b/i.test(trimmed)) {
+      pendingComments = [];
+    }
+  }
+
+  return result;
+}
+
+function extractTableComments(text: string, sFrom: number, sTo: number): string | undefined {
+  const commentBefore = extractCommentsBefore(text, sFrom);
+  const commentAfter = extractCommentsAfter(text, sTo);
+  const parts = [commentBefore, commentAfter].filter(Boolean);
+  return parts.length ? parts.join('\n') : undefined;
+}
+
+function extractCommentsBefore(text: string, fromOffset: number): string | undefined {
+  const beforeText = text.slice(0, fromOffset);
+  const lines = beforeText.split('\n');
+  const commentLines: string[] = [];
+
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const trimmed = lines[i].trim();
+    if (!trimmed) {
+      if (commentLines.length > 0) break;
+      continue;
+    }
+    if (trimmed.startsWith('--')) {
+      const c = trimmed.slice(2).trim();
+      if (!/@erd:/.test(c) && c) commentLines.unshift(c);
+    } else if (trimmed.endsWith('*/')) {
+      const blockLines: string[] = [];
+      const startIdx = trimmed.lastIndexOf('/*');
+      if (startIdx >= 0) {
+        const c = cleanBlockComment(trimmed.slice(startIdx + 2, -2));
+        if (c && !/@erd:/.test(c)) commentLines.unshift(c);
+      } else {
+        blockLines.unshift(trimmed.slice(0, -2));
+        let foundStart = false;
+        while (--i >= 0) {
+          const bl = lines[i].trim();
+          const sIdx = bl.indexOf('/*');
+          if (sIdx >= 0) {
+            blockLines.unshift(bl.slice(sIdx + 2));
+            foundStart = true;
+            break;
+          }
+          blockLines.unshift(bl);
+        }
+        if (foundStart) {
+          const c = cleanBlockComment(blockLines.join('\n'));
+          if (c && !/@erd:/.test(c)) commentLines.unshift(c);
+        }
+      }
+    } else {
+      break;
+    }
+  }
+
+  return commentLines.length ? commentLines.join('\n') : undefined;
+}
+
+function extractCommentsAfter(text: string, toOffset: number): string | undefined {
+  const afterText = text.slice(toOffset);
+  const lines = afterText.split('\n');
+  const commentLines: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    let trimmed = lines[i].trim();
+    if (trimmed.startsWith(';')) {
+      trimmed = trimmed.slice(1).trim();
+    }
+    if (!trimmed) {
+      if (commentLines.length > 0) break;
+      continue;
+    }
+    if (trimmed.startsWith('--')) {
+      const c = trimmed.slice(2).trim();
+      if (!/@erd:/.test(c) && c) commentLines.push(c);
+    } else if (trimmed.startsWith('/*')) {
+      let blockContent = '';
+      if (trimmed.endsWith('*/') && trimmed.length >= 4) {
+        blockContent = trimmed.slice(2, -2);
+      } else {
+        const blockLines = [trimmed.slice(2)];
+        while (++i < lines.length) {
+          const bl = lines[i];
+          const endIdx = bl.indexOf('*/');
+          if (endIdx >= 0) {
+            blockLines.push(bl.slice(0, endIdx));
+            break;
+          }
+          blockLines.push(bl);
+        }
+        blockContent = blockLines.join('\n');
+      }
+      const c = cleanBlockComment(blockContent);
+      if (c && !/@erd:/.test(c)) commentLines.push(c);
+    } else {
+      break;
+    }
+  }
+
+  return commentLines.length ? commentLines.join('\n') : undefined;
+}
+
 interface PendingFk {
   table: Table;
   fromCols: string[];
@@ -192,11 +395,24 @@ export async function parseSql(text: string, pgParse: PgParse): Promise<ParseOut
           indexes: [],
           checks: [],
         };
+        const tableComment = extractTableComments(text, sFrom, sTo);
+        if (tableComment) t.comment = tableComment;
         if (tables.has(tableKey(t))) warn(`Tabela "${t.name}" definida mais de uma vez`, 'error');
         tables.set(tableKey(t), t);
         for (const el of s.tableElts ?? []) {
           if (el.ColumnDef) addColumn(t, el.ColumnDef);
           else if (el.Constraint) addConstraint(t, el.Constraint);
+        }
+        const stmtText = text.slice(sFrom, sTo);
+        const openParen = stmtText.indexOf('(');
+        const closeParen = stmtText.lastIndexOf(')');
+        if (openParen >= 0 && closeParen > openParen) {
+          const body = stmtText.slice(openParen + 1, closeParen);
+          const colComments = extractColumnComments(body, t.columns);
+          for (const col of t.columns) {
+            const cc = colComments.get(col.name);
+            if (cc) col.comment = cc;
+          }
         }
         break;
       }
