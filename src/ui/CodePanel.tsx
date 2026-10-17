@@ -1,6 +1,6 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { AlertTriangle, CheckCircle2, Copy, Download, Loader2, PencilLine, RefreshCw, XCircle } from 'lucide-react';
-import type { Format } from '../model/types';
+import type { Format, Project, Table } from '../model/types';
 import { FORMATS, FORMAT_LABEL } from '../model/types';
 import { CodeEditor } from '../editors/CodeEditor';
 import { LANGUAGES } from '../editors/languages';
@@ -8,9 +8,19 @@ import { applyPending, discardLocal, flush, onLocalEdit, regenerate, usePanels }
 import { useUi, showToast } from '../store/useUi';
 import { useProjectStore } from '../store/useProjectStore';
 import { saveBlob } from '../persistence/files';
-import { slugify } from '../model/naming';
+import { slugify, qi } from '../model/naming';
+import { tableById } from '../model/schema';
+import { computePrismaNames } from '../formats/prisma/mapping';
+import { computeDrizzleNames } from '../formats/drizzle/generate';
 
 const EXT: Record<Format, string> = { sql: 'sql', prisma: 'prisma', drizzle: 'ts' };
+
+/** Trecho que marca o início da definição da tabela em cada formato, pra localizar no texto gerado */
+function tableAnchor(format: Format, table: Table, doc: Pick<Project, 'schema' | 'meta'>): string {
+  if (format === 'sql') return `CREATE TABLE ${(table.schema ? qi(table.schema) + '.' : '') + qi(table.name)}`;
+  if (format === 'prisma') return `model ${computePrismaNames(doc).model.get(table.id) ?? table.name} {`;
+  return `export const ${computeDrizzleNames(doc).table.get(table.id) ?? table.name} = `;
+}
 
 function StatusBadge({ f }: { f: Format }) {
   const p = usePanels((s) => s.panels[f]);
@@ -47,9 +57,24 @@ export function CodePanel() {
   const panel = usePanels((s) => s.panels[tab]);
   const pending = usePanels((s) => s.pending[tab]);
   const name = useProjectStore((s) => s.name);
+  const doc = useProjectStore((s) => s.doc);
+  const jumpToTable = useUi((s) => s.jumpToTable);
 
   const onChange = useCallback((text: string) => onLocalEdit(tab, text), [tab]);
   const onSave = useCallback(() => flush(tab), [tab]);
+
+  const revealOffset = useMemo(() => {
+    if (!jumpToTable) return null;
+    const t = tableById(doc.schema, jumpToTable.id);
+    if (!t) return null;
+    const idx = panel.text.indexOf(tableAnchor(tab, t, doc));
+    if (idx < 0) {
+      showToast('Tabela não encontrada no código atual');
+      return null;
+    }
+    return idx;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jumpToTable, tab, doc, panel.text]);
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-white">
@@ -105,7 +130,18 @@ export function CodePanel() {
           </button>
         </div>
       )}
-      <CodeEditor key={tab} className="min-h-0 flex-1 overflow-hidden" value={panel.text} language={LANGUAGES[tab]} diagnostics={panel.diagnostics} onChange={onChange} onSave={onSave} onBlur={onSave} />
+      <CodeEditor
+        key={tab}
+        className="min-h-0 flex-1 overflow-hidden"
+        value={panel.text}
+        language={LANGUAGES[tab]}
+        diagnostics={panel.diagnostics}
+        onChange={onChange}
+        onSave={onSave}
+        onBlur={onSave}
+        revealOffset={revealOffset}
+        revealToken={jumpToTable?.nonce}
+      />
       {panel.diagnostics.length > 0 && (
         <div className="max-h-28 overflow-y-auto border-t border-slate-200 bg-slate-50 px-3 py-1.5 text-[11.5px]">
           {panel.diagnostics.map((d, i) => (

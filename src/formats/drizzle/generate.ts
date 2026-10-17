@@ -150,6 +150,10 @@ export function drizzleChecksDefaultName(t: Table, i: number) {
   return `${t.name}_check_${i + 1}`;
 }
 
+/** Comentário (SQL/Prisma) refletido como `//` acima da definição, só para leitura (JS não guarda comentários) */
+const docLines = (comment: string | undefined, indent: string) =>
+  comment ? comment.split('\n').map((l) => `${indent}// ${l}`) : [];
+
 export function generateDrizzle(project: Pick<Project, 'schema' | 'meta'>): string {
   const { schema } = project;
   const names = computeDrizzleNames(project);
@@ -199,7 +203,7 @@ export function generateDrizzle(project: Pick<Project, 'schema' | 'meta'>): stri
       if (c.unique && c.id !== singlePk) e += '.unique()';
       if (inlineFk.has(c.id)) e += inlineFk.get(c.id);
       if (e.includes('sql`')) needsSql = true;
-      lines.push(`  ${prop(names.key.get(c.id)!)}: ${e},`);
+      lines.push(...docLines(c.comment, '  '), `  ${prop(names.key.get(c.id)!)}: ${e},`);
     }
 
     if (t.primaryKey.length && !singlePk) {
@@ -231,7 +235,7 @@ export function generateDrizzle(project: Pick<Project, 'schema' | 'meta'>): stri
     let s = `export const ${v} = pgTable(${str(t.name)}, {\n${lines.join('\n')}\n}`;
     if (extra.length) s += `, (t) => [\n${extra.map((e) => '  ' + e + ',').join('\n')}\n]`;
     s += ');';
-    body.push(s);
+    body.push([...docLines(t.comment, ''), s].join('\n'));
   }
 
   const coreImports = [...used].filter((u) => u !== '__raw' && u !== 'AnyPgColumn').sort();

@@ -97,6 +97,31 @@ function ViewFilters() {
         .map((t) => (
           <Check key={t} checked={!view.hiddenTags.includes(t)} onChange={(v) => toggleTag(t, v)} label={LABEL[t] ?? `Tag: ${t}`} />
         ))}
+      <div className="mt-1 border-t border-slate-100 pt-1.5">
+        <div className="px-2 pb-1 text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">Cardinalidade das Notas</div>
+        <div className="flex flex-col gap-1 px-2 py-1 text-[12px] text-slate-700">
+          <label className="flex cursor-pointer items-center gap-2">
+            <input
+              type="radio"
+              name="cardinalityStyle"
+              checked={(view.cardinalityStyle ?? 'look-across') === 'look-across'}
+              onChange={() => setView((x) => void (x.cardinalityStyle = 'look-across'))}
+              className="accent-indigo-600"
+            />
+            Acima da seta (look-across)
+          </label>
+          <label className="flex cursor-pointer items-center gap-2">
+            <input
+              type="radio"
+              name="cardinalityStyle"
+              checked={view.cardinalityStyle === 'below-label'}
+              onChange={() => setView((x) => void (x.cardinalityStyle = 'below-label'))}
+              className="accent-indigo-600"
+            />
+            Abaixo do título da relação
+          </label>
+        </div>
+      </div>
       <div className="mt-1 border-t border-slate-100 px-2 py-1.5 text-[10.5px] text-slate-400">
         {vis.hiddenTables.size} tabela(s) oculta(s). Pivots ocultos viram uma aresta N:N direta.
       </div>

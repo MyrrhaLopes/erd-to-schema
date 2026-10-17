@@ -12,6 +12,7 @@ export const defaultView = (): ViewState => ({
   showNoteRelations: true,
   showNotes: true,
   showEnums: true,
+  cardinalityStyle: 'look-across',
 });
 
 export const emptyProject = (name = 'Novo projeto'): Project => ({

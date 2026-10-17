@@ -141,7 +141,9 @@ export function reconcile(
         col = { ...nc, id: pc.id };
         if (JSON.stringify(pc.type) !== JSON.stringify(nc.type)) changes.push(`Tipo alterado: ${nt.name}.${nc.name}`);
       }
-      if (!caps.columnComments) col.comment = pc.comment;
+      // comentário é sempre tratado pela leitura mais recente quando o formato os expressa,
+      // mesmo que a linha de definição da coluna não tenha mudado (ex.: só o COMMENT ON mudou)
+      col.comment = caps.columnComments ? nc.comment : pc.comment;
       columns.push(col);
     }
     for (const pc of pt.columns) if (![...colMatch.values()].includes(pc)) changes.push(`Coluna removida: ${pt.name}.${pc.name}`);
@@ -266,7 +268,17 @@ export function reconcile(
       }
       if ((pr.onDelete ?? 'no action') !== (mapped.onDelete ?? 'no action') || (pr.onUpdate ?? 'no action') !== (mapped.onUpdate ?? 'no action'))
         changes.push(`Ações da FK alteradas: ${pr.name ?? ''}`.trim());
-      if (pr.label !== mapped.label || pr.cardinality !== mapped.cardinality) changes.push('Relação-nota alterada');
+      if (
+        pr.label !== mapped.label ||
+        pr.cardinality !== mapped.cardinality ||
+        pr.showReverse !== mapped.showReverse ||
+        pr.reverseLabel !== mapped.reverseLabel ||
+        pr.reverseCardinality !== mapped.reverseCardinality
+      )
+        changes.push('Relação-nota alterada');
+      if (mapped.showReverse === undefined) mapped.showReverse = pr.showReverse;
+      if (mapped.reverseLabel === undefined) mapped.reverseLabel = pr.reverseLabel;
+      if (mapped.reverseCardinality === undefined) mapped.reverseCardinality = pr.reverseCardinality;
     } else {
       changes.push(nr.kind === 'fk' ? 'Relação FK adicionada' : 'Relação-nota adicionada');
     }

@@ -77,8 +77,11 @@ export interface EnumType {
 export type RefAction = 'no action' | 'restrict' | 'cascade' | 'set null' | 'set default';
 export const REF_ACTIONS: RefAction[] = ['no action', 'restrict', 'cascade', 'set null', 'set default'];
 
-/** Cardinalidade, lida de `from` para `to`. FK: from = filha, to = mãe. */
-export type Cardinality = '1:1' | 'N:1' | '1:N' | 'N:N';
+/**
+ * Cardinalidade, lida de `from` para `to`. FK: from = filha, to = mãe.
+ * As variantes `0:1`/`0:N` marcam o lado "um" como opcional (mínimo 0) em vez de mandatório.
+ */
+export type Cardinality = '1:1' | 'N:1' | '1:N' | 'N:N' | '0:1' | '0:N';
 
 export interface Relationship {
   id: Id;
@@ -94,6 +97,10 @@ export interface Relationship {
   /** Só para relações-nota; em FK a cardinalidade é derivada do schema */
   cardinality?: Cardinality;
   label?: string;
+  /** Só para relações-nota: exibe também o nome no sentido contrário */
+  showReverse?: boolean;
+  reverseLabel?: string;
+  reverseCardinality?: Cardinality;
 }
 
 export interface SchemaModel {
@@ -149,6 +156,7 @@ export interface ViewState {
   showNoteRelations: boolean;
   showNotes: boolean;
   showEnums: boolean;
+  cardinalityStyle?: 'look-across' | 'below-label';
 }
 
 export interface Project {
