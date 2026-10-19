@@ -12,6 +12,18 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: erd
+          POSTGRES_PASSWORD: erd
+          POSTGRES_DB: erd
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U erd" --health-interval 2s --health-timeout 5s --health-retries 30
+    env:
+      TEST_DATABASE_URL: postgres://erd:erd@localhost:5432/erd
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -27,6 +39,7 @@ jobs:
           restore-keys: turbo-${{ runner.os }}-
       - run: pnpm lint
       - run: pnpm typecheck
+      # unitários, propriedade e integração com Postgres real (um banco novo por arquivo de teste)
       - run: pnpm test
       - run: pnpm build
 
@@ -42,7 +55,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @erd/e2e exec playwright install --with-deps chromium
-      # o mesmo conjunto de testes contra as imagens reais (Caddy + build de produção)
+      # o mesmo conjunto de testes contra as imagens reais (as mesmas do Railway) + Postgres + Mailpit
       - run: docker compose --profile prod up --build -d --wait
       - run: pnpm e2e
         env:

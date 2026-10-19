@@ -1,5 +1,5 @@
 {
   "extends": "@erd/config/tsconfig.base.json",
   "compilerOptions": { "lib": ["ES2023", "DOM"] },
-  "include": ["tests", "playwright.config.ts"]
+  "include": ["tests", "playwright.config.ts", "prepare-db.ts"]
 }

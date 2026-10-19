@@ -1,0 +1,30 @@
+{
+  "name": "@erd/collab",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "vitest run",
+    "lint": "oxlint -c ../../.oxlintrc.json ."
+  },
+  "dependencies": {
+    "@erd/contracts": "workspace:*",
+    "@erd/crdt": "workspace:*",
+    "@erd/db": "workspace:*",
+    "@erd/model": "workspace:*",
+    "@erd/sync": "workspace:*",
+    "yjs": "^13.6.33"
+  },
+  "devDependencies": {
+    "@erd/config": "workspace:*",
+    "@types/node": "^26.6.5",
+    "immer": "^11.1.21",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.4"
+  }
+}

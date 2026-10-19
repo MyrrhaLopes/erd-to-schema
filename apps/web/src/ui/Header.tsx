@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
+  ArrowLeft,
   ChevronDown,
+  CloudUpload,
   Database,
   Eye,
   FileDown,
@@ -23,6 +25,10 @@ import { exportNotesZip } from '../persistence/notes';
 import { buildSampleProject } from '../collab/sample';
 import { getSession } from '../collab/session';
 import { codeText, IMPORT_ORIGIN } from '@erd/crdt';
+import { Link } from '@tanstack/react-router';
+import { useEditorContext } from '../store/useEditorContext';
+import { ConnectionBadge } from './ConnectionBadge';
+import { renameProject, uploadLocalToCloud } from './cloud';
 import { computeVisibility } from '../canvas/derive';
 import { FORMAT_LABEL } from '@erd/model/types';
 
@@ -139,11 +145,18 @@ export function Header() {
   const set = useUi((s) => s.set);
   const canUndo = useProjectStore((s) => s.canUndo);
   const canRedo = useProjectStore((s) => s.canRedo);
-  const [draftName, setDraftName] = useState(name);
+  const mode = useEditorContext((s) => s.mode);
+  const project = useEditorContext((s) => s.project);
+  const shownName = mode === 'remote' && project ? project.name : name;
+  const [draftName, setDraftName] = useState(shownName);
   const editingName = useRef(false);
   useEffect(() => {
-    if (!editingName.current) setDraftName(name);
-  }, [name]);
+    if (!editingName.current) setDraftName(shownName);
+  }, [shownName]);
+  const commitName = (v: string) => {
+    if (mode === 'remote' && project) void renameProject(project.id, v);
+    else setName(v);
+  };
 
   const openFile = async () => {
     const f = await pickFile('.zip,.json,.sql,.prisma,.ts,.js,.md');
@@ -183,9 +196,15 @@ export function Header() {
   return (
     <header className="flex h-12 shrink-0 items-center gap-1 border-b border-slate-200 bg-white px-3">
       <div className="mr-2 flex items-center gap-2">
-        <span className="flex h-7 w-7 items-center justify-center rounded-md bg-indigo-600 text-white">
-          <Database size={15} />
-        </span>
+        {mode === 'remote' ? (
+          <Link to="/" title="Voltar aos projetos" className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100" data-testid="back-to-dashboard">
+            <ArrowLeft size={16} />
+          </Link>
+        ) : (
+          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-indigo-600 text-white">
+            <Database size={15} />
+          </span>
+        )}
         <input
           value={draftName}
           readOnly={readOnly}
@@ -193,8 +212,8 @@ export function Header() {
           onChange={(e) => setDraftName(e.target.value)}
           onBlur={() => {
             editingName.current = false;
-            if (draftName.trim()) setName(draftName.trim());
-            else setDraftName(name);
+            if (draftName.trim() && draftName.trim() !== shownName) commitName(draftName.trim());
+            else setDraftName(shownName);
           }}
           onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
           className="w-48 rounded px-1.5 py-1 text-[13.5px] font-semibold text-slate-800 outline-none hover:bg-slate-50 focus:bg-slate-50"
@@ -211,23 +230,35 @@ export function Header() {
       >
         {(close) => (
           <>
-            <MenuItem
-              onClick={() => {
-                close();
-                if (confirm('Criar um projeto vazio? O atual continua disponível se você salvou o .zip.')) loadProject(emptyProject());
-              }}
-            >
-              Novo projeto vazio
-            </MenuItem>
-            <MenuItem
-              onClick={async () => {
-                close();
-                if (confirm('Carregar o projeto de exemplo? O projeto atual será substituído.')) loadProject(await buildSampleProject());
-              }}
-            >
-              Carregar exemplo
-            </MenuItem>
-            <div className="my-1 border-t border-slate-100" />
+            {mode === 'local' && (
+              <>
+                <MenuItem
+                  onClick={() => {
+                    close();
+                    if (confirm('Criar um projeto vazio? O atual continua disponível se você salvou o .zip.')) loadProject(emptyProject());
+                  }}
+                >
+                  Novo projeto vazio
+                </MenuItem>
+                <MenuItem
+                  onClick={async () => {
+                    close();
+                    if (confirm('Carregar o projeto de exemplo? O projeto atual será substituído.')) loadProject(await buildSampleProject());
+                  }}
+                >
+                  Carregar exemplo
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    close();
+                    void uploadLocalToCloud();
+                  }}
+                >
+                  <CloudUpload size={14} /> Enviar para a nuvem
+                </MenuItem>
+                <div className="my-1 border-t border-slate-100" />
+              </>
+            )}
             <MenuItem
               hint=".zip .json .sql .prisma .ts .md"
               onClick={() => {
@@ -295,6 +326,7 @@ export function Header() {
       </HeaderButton>
 
       <div className="ml-auto flex items-center gap-1">
+        <ConnectionBadge />
         <button title="Desfazer (Ctrl+Z)" disabled={!canUndo} onClick={undo} className="rounded p-1.5 text-slate-600 hover:bg-slate-100 disabled:opacity-30">
           <Undo2 size={16} />
         </button>

@@ -16,9 +16,13 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "e2e": "turbo run e2e",
-    "docker:build": "docker build -f apps/web/Dockerfile -t erd-web .",
-    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
-    "prod:local": "docker compose --profile prod up --build"
+    "docker:build": "docker build -f apps/api/Dockerfile -t erd-server . && docker build -f apps/web/Dockerfile -t erd-web .",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm docker:build",
+    "prod:local": "docker compose --profile prod up --build",
+    "db:generate": "pnpm --filter @erd/db exec drizzle-kit generate",
+    "db:migrate": "pnpm --filter @erd/db migrate",
+    "db:studio": "pnpm --filter @erd/db exec drizzle-kit studio",
+    "env:check": "pnpm --filter @erd/api env:check"
   },
   "devDependencies": {
     "oxlint": "^1.89.0",

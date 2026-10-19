@@ -175,3 +175,25 @@ function sameRecord<T>(a: Record<string, T>, b: Record<string, T>) {
 export function projectDoc(doc: Y.Doc): ProjectDoc {
   return new Projector(doc).current;
 }
+
+/**
+ * Entidades do documento que não passam na validação (o servidor recusa um import ou
+ * update que produza lixo, em vez de aceitar e deixar a projeção pulá-las em silêncio).
+ */
+export function invalidEntities(doc: Y.Doc): string[] {
+  const r = roots(doc);
+  const bad: string[] = [];
+  const scan = (name: ModelRoot, read: (y: YEntity, id: Id) => unknown) => {
+    for (const [id, y] of (r[name] as Y.Map<unknown>).entries()) {
+      if (!(y instanceof Y.Map) || read(y as YEntity, id) === undefined) bad.push(`${name}:${id}`);
+    }
+  };
+  const quiet = <T>(z: Parameters<typeof check<T>>[0], v: unknown): T | undefined => (z.safeParse(v).success ? (v as T) : undefined);
+  scan('tables', (y, id) => quiet(TableZ, readTable(y, id)));
+  scan('enums', (y, id) => quiet(EnumZ, readEnum(y, id)));
+  scan('relationships', (y, id) => quiet(RelationshipZ, readRelationship(y, id)));
+  scan('layout', (y) => quiet(LayoutZ, readLayout(y)));
+  scan('entityMeta', (y) => quiet(EntityMetaZ, readMeta(y)));
+  scan('notes', (y, id) => quiet(NoteZ, readNote(y, id)));
+  return bad;
+}

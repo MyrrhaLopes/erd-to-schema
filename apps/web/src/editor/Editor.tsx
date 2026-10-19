@@ -1,13 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { Loader2 } from 'lucide-react';
-import { Canvas, ReactFlowProvider } from './canvas/Canvas';
-import { Header } from './ui/Header';
-import { CodePanel } from './ui/CodePanel';
-import { ChangeToast, ExportDialog, HelpDialog } from './ui/Dialogs';
-import { useUi } from './store/useUi';
-import { useProjectStore } from './store/useProjectStore';
-import { openLocalSession } from './collab/local';
-import { activateSession, deactivateSession } from './collab/openCanvas';
+import { Canvas, ReactFlowProvider } from '../canvas/Canvas';
+import { Header } from '../ui/Header';
+import { CodePanel } from '../ui/CodePanel';
+import { ChangeToast, ExportDialog, HelpDialog } from '../ui/Dialogs';
+import { useUi } from '../store/useUi';
+import { useProjectStore } from '../store/useProjectStore';
 
 function Splitter() {
   const set = useUi((s) => s.set);
@@ -41,42 +39,30 @@ function Splitter() {
   );
 }
 
-export default function App() {
+/** O editor de um canvas (o app original), igual nos modos local e nuvem */
+export function Editor({ error, banner, tabs }: { error?: string; banner?: ReactNode; tabs?: ReactNode }) {
   const loaded = useProjectStore((s) => s.loaded);
   const panelOpen = useUi((s) => s.panelOpen);
   const panelWidth = useUi((s) => s.panelWidth);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    let cancelled = false;
-    openLocalSession()
-      .then((s) => {
-        if (cancelled) s.destroy();
-        else activateSession(s);
-      })
-      .catch((e) => setError(String(e?.message ?? e)));
-    return () => {
-      cancelled = true;
-      deactivateSession();
-    };
-  }, []);
 
   return (
     <ReactFlowProvider>
       <div className="flex h-full flex-col">
         <Header />
+        {tabs}
+        {banner}
         <div className="flex min-h-0 flex-1">
           <main className="relative min-w-0 flex-1">
             {loaded ? (
               <Canvas />
             ) : (
               <div className="flex h-full items-center justify-center gap-2 text-sm text-slate-500">
-                {error ? <span className="text-red-600">Falha ao iniciar: {error}</span> : <><Loader2 className="animate-spin" size={16} /> Carregando parser do Postgres…</>}
+                {error ? <span className="text-red-600">Falha ao abrir: {error}</span> : <><Loader2 className="animate-spin" size={16} /> Carregando…</>}
               </div>
             )}
             <ChangeToast />
           </main>
-          {panelOpen && (
+          {panelOpen && loaded && (
             <>
               <Splitter />
               <aside className="shrink-0" style={{ width: panelWidth }}>

@@ -23,7 +23,7 @@ declare global {
 export async function openLocal(page: Page) {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto('/');
+  await page.goto('/local');
   await page.waitForSelector('.react-flow__node-table', { timeout: 30_000 });
   await page.waitForTimeout(500);
   return errors;

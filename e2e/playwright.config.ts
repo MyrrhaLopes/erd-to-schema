@@ -6,6 +6,11 @@ import { existsSync } from 'node:fs';
  * (URL=http://localhost:8081 pnpm e2e), que serve as imagens reais.
  */
 const baseURL = process.env.URL ?? 'http://localhost:5173';
+const dbUrl = (() => {
+  const u = new URL(process.env.TEST_DATABASE_URL ?? 'postgres://erd:erd@localhost:5432/erd');
+  u.pathname = '/erd_e2e';
+  return u.toString();
+})();
 const executablePath = process.env.CHROMIUM ?? (existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined);
 
 export default defineConfig({
@@ -27,10 +32,30 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1600, height: 950 } } }],
   webServer: process.env.URL
     ? undefined
-    : {
-        command: 'pnpm --filter @erd/web dev --port 5173 --strictPort',
-        url: baseURL,
-        reuseExistingServer: true,
-        timeout: 120_000,
-      },
+    : [
+        {
+          command: 'pnpm exec tsx prepare-db.ts && pnpm --filter @erd/api exec tsx src/main.ts',
+          url: 'http://localhost:8080/readyz',
+          reuseExistingServer: !process.env.CI,
+          timeout: 120_000,
+          env: {
+            NODE_ENV: 'test',
+            PORT: '8080',
+            APP_URL: baseURL,
+            BETTER_AUTH_URL: baseURL,
+            DATABASE_URL: dbUrl,
+            BETTER_AUTH_SECRET: 'e2e-secret-e2e-secret-e2e-secret-e2e',
+            COLLAB_JWT_SECRET: 'e2e-collab-e2e-collab-e2e-collab-e2e',
+            MAIL_DRIVER: 'smtp',
+            SMTP_URL: process.env.SMTP_URL ?? 'smtp://localhost:1025',
+            LOG_LEVEL: 'warn',
+          },
+        },
+        {
+          command: 'pnpm --filter @erd/web dev --port 5173 --strictPort',
+          url: baseURL,
+          reuseExistingServer: !process.env.CI,
+          timeout: 120_000,
+        },
+      ],
 });

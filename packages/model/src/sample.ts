@@ -1,4 +1,8 @@
-import type { NoteBlock } from '@erd/model/types';
+import type { NoteBlock, Project } from './types';
+import type { ParseOutcome } from './formats/common';
+import { emptyProject, NOTE_H, NOTE_W, placeNewEntities } from './project';
+import { reconcile } from './reconcile';
+import { columnSql } from './formats/sql/generate';
 
 export const SAMPLE_SQL = `CREATE TYPE order_status AS ENUM ('pending', 'paid', 'shipped', 'cancelled');
 
@@ -91,3 +95,21 @@ export const SAMPLE_NOTES: Omit<NoteBlock, 'id'>[] = [
 - **?** mostra todos os atalhos`,
   },
 ];
+
+/** Projeto de exemplo a partir do SQL (o parse é injetado: worker no browser, WASM direto no servidor) */
+export async function buildSampleProject(parse: (sql: string) => Promise<ParseOutcome>, newNoteId: () => string): Promise<Project> {
+  const p = emptyProject('Exemplo — loja');
+  const r = await parse(SAMPLE_SQL);
+  if (r.ok) {
+    const rec = reconcile(p, r.parsed, 'sql', columnSql);
+    p.schema = rec.schema;
+    p.meta = rec.meta;
+  }
+  for (const n of SAMPLE_NOTES) {
+    const id = newNoteId();
+    p.notes.push({ id, ...n });
+    p.layout[id] = { x: -340, y: 0, w: NOTE_W + 20, h: NOTE_H + 70 };
+  }
+  placeNewEntities(p);
+  return p;
+}

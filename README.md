@@ -2,17 +2,53 @@
 
 Canvas interativo de ERD em que **canvas, SQL (Postgres), Prisma e Drizzle são quatro vistas do mesmo modelo**. Editar qualquer uma atualiza as outras três, e o canvas se redesenha sozinho. Implementado a partir de [`docs/erd-builder-plan.md`](docs/erd-builder-plan.md).
 
-Monorepo pnpm + Turborepo (plano de evolução em [`docs/fullstack-collab-plan.md`](docs/fullstack-collab-plan.md)).
+Monorepo pnpm + Turborepo, com contas, projetos na nuvem e o modo local sem conta. O plano de evolução está em [`docs/fullstack-collab-plan.md`](docs/fullstack-collab-plan.md).
+
+## Rodando local (com backend)
+
+Pré-requisitos: Node 22+ (24 recomendado, `.node-version`), pnpm 10 (`corepack enable`) e Docker.
 
 ```bash
 pnpm install
-pnpm dev           # http://localhost:5173
-pnpm test          # unitários + round-trip baseados em propriedade (vitest + fast-check)
-pnpm build
-pnpm e2e           # @playwright/test (sobe o Vite sozinho; URL=... roda contra outro servidor)
-pnpm verify        # lint + typecheck + test + build (rodar antes de abrir PR)
-pnpm prod:local    # as imagens Docker reais (as mesmas do Railway)
+cp .env.example .env      # valores de dev já prontos
+pnpm infra:up             # Postgres + Mailpit (e-mails em http://localhost:8025)
+pnpm db:migrate
+pnpm dev                  # web em http://localhost:5173 (+ API em :8080, via proxy do Vite)
 ```
+
+- `/local` abre o modo local, sem conta (o projeto fica só neste navegador, no IndexedDB).
+- `/` pede login. O e-mail de confirmação do cadastro chega no Mailpit.
+
+| Comando | O quê |
+|---|---|
+| `pnpm test` | unitários, propriedade (fast-check) e integração com Postgres real |
+| `pnpm e2e` | Playwright; sobe a API e o Vite sozinho (com `URL=...`, roda contra outro servidor) |
+| `pnpm verify` | lint + typecheck + test + build + imagens Docker — rodar antes de abrir PR |
+| `pnpm prod:local` | as imagens reais (as mesmas do Railway) + Postgres + Mailpit, em http://localhost:8081 |
+| `pnpm db:generate` | gera a migração SQL a partir do schema Drizzle (versionar junto com a mudança) |
+| `pnpm env:check` | valida o `.env` com o mesmo zod do boot do servidor |
+
+## Variáveis de ambiente
+
+Todas estão em [`.env.example`](.env.example), com comentários. O servidor valida tudo no boot (`apps/api/src/env.ts`): com variável faltando, ele não sobe e o healthcheck não passa. O `web` não tem variáveis de build: chama `/api` e `/collab` na própria origem, então a mesma imagem serve staging e produção.
+
+## Deploy no Railway
+
+Resumo do §15 do plano. Um projeto Railway com três serviços:
+
+| Serviço | Origem | Domínio público |
+|---|---|---|
+| `web` | `apps/web/Dockerfile` (Vite + Caddy), config em `/apps/web/railway.json` | sim (o único) |
+| `server` | `apps/api/Dockerfile` (API + colaboração), config em `/apps/api/railway.json` | não (rede privada) |
+| `Postgres` | template do Railway | não |
+
+1. **New Project → Empty Project**; **+ New → Database → PostgreSQL** (nome do serviço: `Postgres`).
+2. **+ New → GitHub Repo** duas vezes (`server` e `web`), ambas com *Root Directory* `/` e *Config file path* apontando para o `railway.json` do serviço. Ligue **Wait for CI**. Só o `web` ganha domínio.
+3. Variáveis do `server` (Raw Editor): `NODE_ENV=production`, `PORT=8080`, `APP_URL=https://${{web.RAILWAY_PUBLIC_DOMAIN}}`, `BETTER_AUTH_URL=${{APP_URL}}`, `DATABASE_URL=${{Postgres.DATABASE_URL}}`, `BETTER_AUTH_SECRET` e `COLLAB_JWT_SECRET` (`openssl rand -base64 32`), `MAIL_DRIVER=resend`, `RESEND_API_KEY`, `EMAIL_FROM`, OAuth opcional e `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=30`.
+4. Variável do `web`: `SERVER_INTERNAL_URL=http://${{server.RAILWAY_PRIVATE_DOMAIN}}:${{server.PORT}}`.
+5. Deploy: o `server` roda as migrações no `preDeployCommand` e só recebe tráfego quando `/readyz` responde; o `web` responde em `/healthz`.
+
+Daí em diante: PR → CI verde → merge → deploy automático. Migrações seguem *expand/contract* (nada de `DROP`/`RENAME` no mesmo deploy que muda o código que usa a coluna).
 
 ## O que dá para fazer
 

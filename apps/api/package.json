@@ -1,0 +1,63 @@
+{
+  "name": "@erd/api",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/app.ts"
+  },
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../../.env src/main.ts",
+    "build": "tsdown",
+    "start": "node --enable-source-maps dist/main.js",
+    "typecheck": "tsc -p .",
+    "test": "vitest run",
+    "lint": "oxlint -c ../../.oxlintrc.json .",
+    "env:check": "tsx --env-file-if-exists=../../.env src/envCheck.ts"
+  },
+  "dependencies": {
+    "@erd/collab": "workspace:*",
+    "@erd/contracts": "workspace:*",
+    "@erd/crdt": "workspace:*",
+    "@erd/db": "workspace:*",
+    "@erd/emails": "workspace:*",
+    "@erd/model": "workspace:*",
+    "@erd/sync": "workspace:*",
+    "@hono/node-server": "^2.1.5",
+    "@hono/zod-validator": "^0.9.1",
+    "@mrleebo/prisma-ast": "^0.16.0",
+    "@node-rs/argon2": "^2.2.2",
+    "@react-email/components": "^1.0.12",
+    "@react-email/render": "^2.1.1",
+    "better-auth": "^1.7.11",
+    "diff-match-patch": "^1.0.5",
+    "drizzle-orm": "^0.45.4",
+    "fflate": "^0.8.3",
+    "fractional-indexing": "^4.0.0",
+    "hono": "^4.13.13",
+    "jose": "^6.2.12",
+    "libpg-query": "^18.1.5",
+    "nanoid": "^6.0.2",
+    "nodemailer": "^10.1.7",
+    "pg": "^8.23.1",
+    "pgsql-deparser": "^18.3.12",
+    "pino": "^10.4.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "resend": "^6.34.1",
+    "sucrase": "^3.35.1",
+    "yjs": "^13.6.33",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@erd/config": "workspace:*",
+    "@types/node": "^26.6.5",
+    "@types/nodemailer": "^8.0.2",
+    "@types/pg": "^8.23.1",
+    "immer": "^11.1.21",
+    "tsdown": "^0.23.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.4"
+  }
+}

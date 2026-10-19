@@ -1,0 +1,4 @@
+{
+  "extends": "@erd/config/tsconfig.base.json",
+  "include": ["src", "tests", "vitest.config.ts"]
+}

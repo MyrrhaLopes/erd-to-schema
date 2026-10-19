@@ -9,10 +9,14 @@
     "lint": "oxlint -c ../.oxlintrc.json ."
   },
   "devDependencies": {
+    "@erd/config": "workspace:*",
+    "@erd/db": "workspace:*",
     "@erd/web": "workspace:*",
     "@playwright/test": "1.56.1",
     "@types/node": "^26.6.5",
-    "@erd/config": "workspace:*",
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.1",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }
 }
