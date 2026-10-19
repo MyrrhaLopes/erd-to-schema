@@ -18,9 +18,9 @@
 | Modelo de colaboração | **CRDT com Yjs** | Merge automático sem servidor de transformação (OT); funciona offline e reconecta sozinho; ecossistema maduro (awareness, undo, bindings de CodeMirror). |
 | Servidor de tempo real | **Hocuspocus** (servidor Yjs open source, do time do Tiptap) | Já traz autenticação por documento, conexões *read-only*, persistência plugável e extensão Redis para escalar horizontalmente. Ver §6.0. |
 | Painéis de código | **Texto compartilhado** (`Y.Text` por formato) + **sync bot no servidor** | Edição simultânea estilo Docs no SQL/Prisma/Drizzle, com cursores coloridos. Um único escritor (o bot) traduz texto ⇄ modelo, então não há duplicação. Ver §4.6. |
-| API | **Hono** (Node) + **zod** | Parecido com o Express, mas TypeScript-first: o cliente RPC tipado elimina a duplicação de tipos entre a API e a web. Express 5 também serve. Ver §7.0. |
+| API | **Hono** (Node) + **zod** | Parecido com o Express, mas TypeScript-first: o cliente RPC tipado elimina a duplicação de tipos entre a API e a web. **Decidido.** Ver §7.0. |
 | Banco | **Postgres + Drizzle ORM** | O app já gera Drizzle; usar o mesmo ORM no backend faz *dogfooding* e permite validar o próprio gerador. |
-| Auth | **Better Auth** (adaptador Drizzle) | Biblioteca, não serviço: as tabelas ficam no seu Postgres, no seu schema Drizzle. Evita reimplementar hash de senha, sessões, reset, verificação de e-mail e OAuth. Ver §7.0. |
+| Auth | **Better Auth** (adaptador Drizzle) | Biblioteca, não serviço: as tabelas ficam no seu Postgres, no seu schema Drizzle. Evita reimplementar hash de senha, sessões, reset, verificação de e-mail e OAuth. **Decidido.** Ver §7.0. |
 | E-mail | **Resend** + **React Email**; **Mailpit** em dev | API simples, templates em JSX, plano gratuito suficiente para começar. Alternativas: Postmark, Amazon SES. Ver §7.2. |
 | Front | O app atual vira `apps/web`; entra **TanStack Router** + **TanStack Query** | Rotas tipadas (dashboard, projeto, canvas) e cache das chamadas REST. |
 | Fonte da verdade no cliente | **Y.Doc** (zustand vira projeção somente-leitura) | Toda a lógica de ações atual (`actions.ts`, Inspector, reconcile) continua escrevendo via `commit()`; só o que está por baixo do `commit` muda. |
@@ -410,7 +410,9 @@ Alternativas consideradas:
 
 ## 7. API (`apps/api`)
 
-### 7.0 Por que Hono e Better Auth (e quando Express e auth manual fazem sentido)
+### 7.0 Por que Hono e Better Auth
+
+> **Decidido:** Hono + Better Auth. Esta seção registra o porquê e as alternativas descartadas (Express 5 e auth manual).
 
 **Hono × Express.** A API do Hono é quase a do Express (`app.get('/projects', handler)`, middlewares em cadeia), então a curva de aprendizado é pequena. A diferença está no que vem de graça num monorepo TypeScript:
 
@@ -423,7 +425,13 @@ Alternativas consideradas:
 | Padrão de plataforma | `Request`/`Response` da Web: o mesmo código roda em Node, Bun, Deno ou edge | Só Node |
 | Ecossistema | Menor, mas cobre o que precisamos (CORS, cookies, rate limit, WebSocket) | Enorme e muito conhecido |
 
-Recomendação: **Hono**, principalmente pelo cliente tipado: ele elimina uma classe inteira de bugs de "a API mudou e a web não". Dito isso, **Express 5 + zod + ts-rest é uma escolha perfeitamente boa** se a familiaridade pesar mais. Nada no resto do plano depende dessa escolha: o Hocuspocus se acopla a qualquer servidor HTTP do Node, e o Better Auth tem adaptador para os dois.
+Escolha: **Hono**, principalmente pelo cliente tipado: ele elimina uma classe inteira de bugs de "a API mudou e a web não". Express 5 + zod + ts-rest seria a alternativa, e foi descartada.
+
+Na prática:
+- a API roda em Node com `@hono/node-server`;
+- as rotas são agrupadas por recurso (`projects`, `members`, `access-requests`...) com `app.route()`, e o validador de cada rota é o `zValidator` com os schemas de `@erd/contracts`;
+- `apps/api` exporta `type AppType = typeof app`, e `apps/web` usa `hc<AppType>(baseUrl)` envolvido em hooks do TanStack Query;
+- o Hocuspocus se acopla ao mesmo servidor HTTP via `upgrade` do WebSocket (§6.2), usando o `@hono/node-ws` ou o servidor Node por baixo.
 
 **Better Auth × auth manual.** Login com e-mail e senha "só" parece pequeno. A lista do que precisa estar certo é longa, e cada item é um bug de segurança em potencial:
 
@@ -436,7 +444,16 @@ Recomendação: **Hono**, principalmente pelo cliente tipado: ele elimina uma cl
 
 O **Better Auth é uma biblioteca, não um serviço** (não é um Auth0 ou Clerk). Ele roda dentro da sua API, e as tabelas (`user`, `session`, `account`, `verification`) são geradas **no seu schema Drizzle**, no seu Postgres. Você continua dono dos dados, sem mensalidade e sem lock-in. O envio dos e-mails de verificação e de reset é um callback que chama o nosso `Mailer` (§7.2). Se depois quiser 2FA ou passkeys, são plugins.
 
-Auth manual faz sentido se o objetivo for **aprender**. Nesse caso, a referência é o guia do Lucia (lucia-auth.com), que virou um material de "como implementar sessões você mesmo". O plano funciona igual, porque a API só precisa de um `getSession(request) → user`.
+Escolha: **Better Auth**. Na prática:
+- `auth` é configurado em `apps/api/src/auth.ts` com o `drizzleAdapter` apontando para `@erd/db`;
+- as tabelas geradas pela CLI do Better Auth entram no schema Drizzle e nas migrações do drizzle-kit, ao lado de `projects` etc.;
+- as rotas são montadas com `app.on(['GET','POST'], '/api/auth/*', (c) => auth.handler(c.req.raw))`;
+- um middleware Hono chama `auth.api.getSession({ headers })` e põe `user` no contexto de cada rota;
+- o mesmo `getSession` é usado ao emitir o token de colaboração (§3);
+- `emailAndPassword` com `requireEmailVerification`, `sendVerificationEmail` e `sendResetPassword` chamam o `Mailer` (§7.2), e `socialProviders` cobre GitHub e Google;
+- o *rate limit* embutido do Better Auth fica ligado nas rotas de login e reset.
+
+A alternativa descartada era auth manual. Ela só valeria a pena com o objetivo de aprender, e nesse caso a referência seria o guia do Lucia (lucia-auth.com).
 
 ### 7.1 Rotas
 
@@ -645,11 +662,9 @@ O **contrato `CanvasKind`** (§8.3) entra na fase 1 ou 3, quando o editor deixa 
 
 ## 14. Decisões em aberto (com recomendação)
 
-Já decidido: **Drizzle** no backend; **painéis de código com digitação compartilhada** estilo Docs (§4.6).
+Já decidido: **Drizzle** no backend; **painéis de código com digitação compartilhada** estilo Docs (§4.6); **Hono** na API e **Better Auth** para autenticação (§7.0).
 
-1. **Hono ou Express 5?** Recomendação: Hono, pelo cliente tipado (§7.0). Se preferir Express, entra ts-rest para manter a tipagem ponta a ponta, e o resto do plano não muda.
-2. **Better Auth ou auth manual?** Recomendação: Better Auth (§7.0). Auth manual só se a ideia for aprender, usando o guia do Lucia como referência.
-3. **Provedores de login:** e-mail/senha + GitHub + Google? (Recomendação: sim, os três.)
-4. **Manter o modo local sem conta?** Recomendação: sim. É barato, porque usa o mesmo binding CRDT, e serve de porta de entrada.
-5. **Editores podem compartilhar?** Default `editorsCanShare: false`, configurável por projeto.
-6. **Hospedagem:** escolher o provedor antes da fase 6. O código fica atrás de interfaces (`Mailer`, `Storage` para thumbnails) para não acoplar.
+1. **Provedores de login:** e-mail/senha + GitHub + Google? (Recomendação: sim, os três.)
+2. **Manter o modo local sem conta?** Recomendação: sim. É barato, porque usa o mesmo binding CRDT, e serve de porta de entrada.
+3. **Editores podem compartilhar?** Default `editorsCanShare: false`, configurável por projeto.
+4. **Hospedagem:** escolher o provedor antes da fase 6. O código fica atrás de interfaces (`Mailer`, `Storage` para thumbnails) para não acoplar.
