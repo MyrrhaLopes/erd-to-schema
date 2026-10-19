@@ -21,6 +21,7 @@
 | API | **Hono** (Node) + **zod** | Parecido com o Express, mas TypeScript-first: o cliente RPC tipado elimina a duplicação de tipos entre a API e a web. **Decidido.** Ver §7.0. |
 | Banco | **Postgres + Drizzle ORM** | O app já gera Drizzle; usar o mesmo ORM no backend faz *dogfooding* e permite validar o próprio gerador. |
 | Auth | **Better Auth** (adaptador Drizzle) | Biblioteca, não serviço: as tabelas ficam no seu Postgres, no seu schema Drizzle. Evita reimplementar hash de senha, sessões, reset, verificação de e-mail e OAuth. **Decidido.** Ver §7.0. |
+| Deploy | **Railway**: `web` (Caddy, único domínio público) + `server` (rede privada) + Postgres | Mesma origem para o SPA, a API e o WebSocket; os Dockerfiles são os mesmos do `prod:local`. Ver §15. |
 | E-mail | **Resend** + **React Email**; **Mailpit** em dev | API simples, templates em JSX, plano gratuito suficiente para começar. Alternativas: Postmark, Amazon SES. Ver §7.2. |
 | Front | O app atual vira `apps/web`; entra **TanStack Router** + **TanStack Query** | Rotas tipadas (dashboard, projeto, canvas) e cache das chamadas REST. |
 | Fonte da verdade no cliente | **Y.Doc** (zustand vira projeção somente-leitura) | Toda a lógica de ações atual (`actions.ts`, Inspector, reconcile) continua escrevendo via `commit()`; só o que está por baixo do `commit` muda. |
@@ -399,7 +400,7 @@ Alternativas consideradas:
 ### 6.2 Escala
 
 - Começo: **uma instância** com API e collab no mesmo processo Node (o Hocuspocus se acopla no servidor HTTP do Hono). É o deploy mais simples.
-- Quando precisar: separar os processos e ligar a **extensão Redis** do Hocuspocus, que propaga updates e awareness entre instâncias. Os eventos de permissão passam para o Redis pub/sub.
+- Quando precisar: separar os processos e ligar a **extensão Redis** do Hocuspocus, que propaga updates e awareness entre instâncias. Os eventos de permissão passam para o Redis pub/sub. No Railway, isso significa um serviço Redis e `numReplicas` > 1 no `server` (§15.5). Antes do Redis, **nunca** mais de uma réplica.
 
 ### 6.3 Versões
 
@@ -618,26 +619,22 @@ Cada fase termina com o app funcionando e os testes verdes. A ordem ataca primei
 
 | Fase | Entrega | Critério de pronto |
 |---|---|---|
-| **0. Monorepo** | pnpm + Turborepo; `src/` vira `apps/web`; `src/model` + `src/formats` viram `packages/model`; `packages/config`; CI. **Nenhuma mudança de comportamento.** | `pnpm build`, `test` e `e2e` passam como hoje. |
+| **0. Monorepo** | pnpm + Turborepo; `src/` vira `apps/web`; `src/model` + `src/formats` viram `packages/model`; `packages/config`; CI; `apps/web/Dockerfile` + `Caddyfile` publicando o app local num serviço `web` de staging no Railway (§15.8). **Nenhuma mudança de comportamento.** | `pnpm build`, `test` e `e2e` passam como hoje. |
 | **1. Y.Doc local** | `packages/crdt` (schema, `fromProject`, projeção, `applyDiff`); `commit()` reimplementado por cima do Y.Doc; `Y.UndoManager` no lugar do zundo; `y-indexeddb` no lugar do autosave; `view` separado do documento. **Painéis sobre `Y.Text` + `packages/sync` rodando no browser** (parse por bloco, patch modelo → texto, blocos divergentes), substituindo o `sync/engine.ts`. Ainda sem servidor. | Testes de propriedade do CRDT e do bot; todos os e2e atuais passam; undo e redo com o mesmo comportamento percebido. Dá para simular dois usuários com dois Y.Docs no mesmo processo, antes de existir rede. |
 | **2. Backend + contas** | `packages/db`, `apps/api` com Better Auth, `packages/emails` + `Mailer` + Mailpit (verificação de conta e reset de senha já usam e-mail), CRUD de projetos e canvases, dashboard e rotas na web, import do `.zip` e do projeto local. Persistência por enquanto via upload do estado Yjs pela API (sem tempo real). | Criar conta (com o e-mail de verificação chegando no Mailpit), criar e abrir projetos, recarregar e ver o estado salvo. |
+| **2B. Conformidade de deploy (Railway)** | Dockerfiles, `Caddyfile`, `railway.json` por serviço, migrações no pre-deploy, `env.ts`, healthchecks, shutdown gracioso, scripts `verify`/`prod:local`, CI com Wait for CI, ambiente de staging no ar (§15). | Um `git push` em `main` publica no staging sem passo manual; `pnpm prod:local` reproduz a produção; um deploy com migração não derruba sessões abertas. |
 | **3. Tempo real** | `apps/collab` (Hocuspocus, persistência com log e compactação, token JWT); **o sync bot passa do browser para o servidor**, com `packages/sandbox` para o Drizzle; `HocuspocusProvider` na web; indicador de conexão; arraste via awareness; cursores remotos básicos nos painéis. | E2E com dois usuários editando o mesmo canvas **e o mesmo painel de código**, incluindo offline e reconexão. |
 | **4. Compartilhamento** | Membros, convites por e-mail, papéis, modo visualização, pedidos de acesso, notificações in-app e por e-mail (com fila pg-boss e preferências), mudança de papel ao vivo, link de visualização. Conta no Resend e DNS (SPF/DKIM/DMARC) do domínio. | Matriz de permissões coberta por testes de API e e2e. |
 | **5. Presença e autoria** | Cores por membro, cursores no canvas, anéis de seleção, soft lock, avatares e "seguir", notas e painéis com rastro de digitação, erros com dono, ponte painel ⇄ canvas via source map, rastro recente, modo "Mostrar autoria" (entidades e trechos de texto). | E2E verificando cor e rótulo; teste manual com 3 a 4 pessoas digitando no mesmo SQL. |
-| **6. Produção** | Versões nomeadas e restauração, thumbnails, limites e taxas, observabilidade (logs estruturados, métricas de conexões e tamanho de documentos), deploy, backups. | Deploy de staging; teste de carga com cerca de 20 clientes num documento de 200 tabelas. |
+| **6. Produção** | Versões nomeadas e restauração, thumbnails, limites e taxas, observabilidade (logs estruturados, métricas de conexões e tamanho de documentos), ambiente de produção no Railway separado do staging, backups agendados + `pg_dump` externo (§15.6, §15.8). | Produção no ar no Railway; teste de carga no staging com cerca de 20 clientes num documento de 200 tabelas. |
 | **7. Escala** (sob demanda) | Separar API e collab; extensão Redis; múltiplas instâncias. | — |
 | **8. Fluxos de usuário** | `CanvasKind` "flow" (§9). | — |
 
 O **contrato `CanvasKind`** (§8.3) entra na fase 1 ou 3, quando o editor deixa de ser singleton. Assim a fase 8 só adiciona um tipo novo, sem refatorar o editor.
 
-### Deploy sugerido
+### Deploy
 
-- **Web:** estático (Cloudflare Pages, Vercel ou Netlify). Atenção aos headers do WASM do `libpg-query` e ao `Content-Type` correto.
-- **API + collab:** um container Node com suporte a WebSocket de longa duração (Fly.io, Railway ou Render; *não* serverless, porque o Hocuspocus precisa de conexões persistentes).
-- **Postgres** gerenciado (Neon, Supabase ou RDS) com backup diário; Redis só a partir da fase 7.
-- **E-mail:** Resend, com o domínio verificado (§7.2).
-- O container do collab precisa compilar o módulo nativo do `isolated-vm` (imagem Node completa, não *alpine* mínima) e reservar memória para o pool do sandbox.
-- Domínio único com proxy (`app.dominio` → web, `/api` e `/collab` → Node) para o cookie de sessão funcionar sem dor de CORS.
+Tudo roda no **Railway**: um serviço `web` (Caddy) como único domínio público, um `server` (API + collab) na rede privada e o Postgres do Railway. Arquivos, comandos, variáveis e o passo a passo estão no §15.
 
 ---
 
@@ -662,9 +659,447 @@ O **contrato `CanvasKind`** (§8.3) entra na fase 1 ou 3, quando o editor deixa 
 
 ## 14. Decisões em aberto (com recomendação)
 
-Já decidido: **Drizzle** no backend; **painéis de código com digitação compartilhada** estilo Docs (§4.6); **Hono** na API e **Better Auth** para autenticação (§7.0).
+Já decidido: **Drizzle** no backend; **painéis de código com digitação compartilhada** estilo Docs (§4.6); **Hono** na API e **Better Auth** para autenticação (§7.0); **deploy no Railway** (§15).
 
 1. **Provedores de login:** e-mail/senha + GitHub + Google? (Recomendação: sim, os três.)
 2. **Manter o modo local sem conta?** Recomendação: sim. É barato, porque usa o mesmo binding CRDT, e serve de porta de entrada.
 3. **Editores podem compartilhar?** Default `editorsCanShare: false`, configurável por projeto.
-4. **Hospedagem:** escolher o provedor antes da fase 6. O código fica atrás de interfaces (`Mailer`, `Storage` para thumbnails) para não acoplar.
+4. **Fluxo de promoção no Railway:** staging deploya de `develop` e produção de `main`, ou os dois de `main`, com produção promovida manualmente? Recomendação: `main` → staging automático e produção por tag/release, até existirem usuários reais (§15.6).
+
+---
+
+## 15. Conformidade de deploy (Railway)
+
+> Etapa **2B** das fases (§12). Entra assim que existe backend, para que todo o resto do desenvolvimento já seja publicado num ambiente de staging real. Cada fase seguinte tem um item de conformidade no checklist do §15.8.
+>
+> Os detalhes do Railway mudam rápido. Os pontos marcados com ⚠ devem ser conferidos na documentação ([docs.railway.com](https://docs.railway.com)) no momento de executar a etapa.
+
+### 15.1 Topologia no Railway
+
+Um projeto Railway com dois ambientes: `production` e `staging`. Os *PR environments* ficam opcionais.
+
+```mermaid
+flowchart LR
+  U[Browser] -->|HTTPS + WSS<br/>domínio público| W
+  subgraph Railway project
+    W[web<br/>Caddy: estáticos + proxy] -->|http://server.railway.internal:8080<br/>/api, /collab| S[server<br/>Hono + Better Auth + Hocuspocus<br/>+ sync bot + worker de e-mail]
+    S --> P[(Postgres<br/>template Railway)]
+    S -.fase 7.-> R[(Redis)]
+  end
+  S --> M[Resend]
+```
+
+| Serviço | Origem | Público? | Observações |
+|---|---|---|---|
+| `web` | `apps/web/Dockerfile` (build do Vite + Caddy) | **Sim**: o único com domínio | Serve o SPA e faz *reverse proxy* de `/api/*` e `/collab` para o `server` pela rede privada. |
+| `server` | `apps/api/Dockerfile` | Não | API, Better Auth, Hocuspocus, sync bot, sandbox e worker da fila de e-mail, num processo só. |
+| `Postgres` | Template de banco do Railway | Não (a URL pública fica só para manutenção) | Backups agendados (§15.6). |
+| `Redis` | Template (só na fase 7) | Não | Extensão Redis do Hocuspocus, quando houver mais de uma réplica do `server`. |
+
+**Por que um único domínio público (o `web` fazendo proxy):**
+- **Mesma origem** para o SPA, a API e o WebSocket: sem CORS, e o cookie de sessão do Better Auth é *first-party* (`SameSite=Lax`).
+- Se `web` e `server` tivessem cada um o seu domínio `*.up.railway.app`, eles seriam *sites diferentes*, porque `up.railway.app` está na *Public Suffix List* ⚠. O cookie da sessão viraria cookie de terceiros, e os navegadores estão bloqueando esse tipo de cookie.
+- O `server` não fica exposto diretamente à internet.
+- Na fase 7, separar o collab é só trocar o destino de `/collab` no Caddy para `collab.railway.internal`.
+
+### 15.2 Arquivos novos
+
+```
+.node-version                 # 24 (LTS) — lido pelo Railway, pelo CI e pelo fnm/nvm
+.npmrc                        # inject-workspace-packages=true (para o `pnpm deploy`)
+.dockerignore                 # node_modules, **/dist, .turbo, .git, e2e/artifacts, .env*
+.env.example                  # todas as variáveis, com comentário de onde vêm (§15.4)
+docker-compose.yml            # dev: postgres + mailpit; profile "prod": as duas imagens reais
+turbo.json
+pnpm-workspace.yaml
+.github/workflows/ci.yml      # verify + e2e contra o "prod:local"
+
+apps/web/Dockerfile
+apps/web/Caddyfile
+apps/web/railway.json
+apps/api/Dockerfile
+apps/api/railway.json
+apps/api/tsdown.config.ts     # bundle do servidor (ou tsup)
+apps/api/src/env.ts           # validação das variáveis com zod (falha no boot)
+apps/api/src/health.ts        # /healthz e /readyz
+apps/api/src/shutdown.ts      # SIGTERM: drenar WebSockets, salvar documentos, fechar a fila e o pool
+
+packages/db/drizzle.config.ts
+packages/db/src/migrate.ts    # migrador programático (roda no preDeploy)
+packages/db/migrations/       # SQL gerado pelo drizzle-kit, versionado no git
+```
+
+#### `pnpm-workspace.yaml` e `turbo.json`
+
+```yaml
+packages: ["apps/*", "packages/*"]
+```
+
+```json
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "tasks": {
+    "build":     { "dependsOn": ["^build"], "outputs": ["dist/**"] },
+    "typecheck": { "dependsOn": ["^build"] },
+    "lint":      {},
+    "test":      { "dependsOn": ["^build"] },
+    "dev":       { "cache": false, "persistent": true },
+    "e2e":       { "dependsOn": ["build"], "cache": false }
+  }
+}
+```
+
+#### `apps/api/Dockerfile` (esboço)
+
+`turbo prune --docker` copia só o que o pacote usa, o que mantém o cache de camadas: `pnpm install` só roda de novo quando o lockfile muda.
+
+```dockerfile
+FROM node:24-bookworm-slim AS base
+RUN corepack enable
+WORKDIR /repo
+
+FROM base AS pruner
+COPY . .
+RUN pnpm dlx turbo@2 prune @erd/api --docker
+
+FROM base AS builder
+# isolated-vm é módulo nativo: precisa de toolchain no build
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
+COPY --from=pruner /repo/out/json/ .
+RUN pnpm install --frozen-lockfile
+COPY --from=pruner /repo/out/full/ .
+RUN pnpm turbo run build --filter=@erd/api...
+RUN pnpm --filter @erd/api deploy --prod /app
+
+FROM node:24-bookworm-slim AS runner
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=builder /app .
+USER node
+EXPOSE 8080
+# --no-node-snapshot é exigido pelo isolated-vm no Node ≥ 20
+CMD ["node", "--no-node-snapshot", "--enable-source-maps", "dist/main.js"]
+```
+
+- **Bundle do servidor:** o `tsdown` (ou `tsup`) faz o bundle com `noExternal: [/^@erd\//]`, então os pacotes internos não precisam de build separado em runtime. `isolated-vm`, `libpg-query` (que carrega o `.wasm` da própria pasta) e `pg` ficam como *external* e chegam via `pnpm deploy --prod`.
+- A imagem é `bookworm-slim`, e não `alpine`, porque o `isolated-vm` e o `libpg-query` não se dão bem com musl. ⚠ Conferir na fase 3 a compatibilidade do `isolated-vm` com o Node 24.
+
+#### `apps/web/Dockerfile` + `Caddyfile`
+
+```dockerfile
+FROM node:24-bookworm-slim AS build
+RUN corepack enable
+WORKDIR /repo
+COPY . .
+RUN pnpm dlx turbo@2 prune @erd/web --docker && cp -r out/json/. /build && cp -r out/full/. /build
+WORKDIR /build
+RUN pnpm install --frozen-lockfile && pnpm turbo run build --filter=@erd/web
+
+FROM caddy:2
+COPY apps/web/Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /build/apps/web/dist /srv
+```
+
+```caddyfile
+{
+	admin off
+	auto_https off                       # o TLS termina na borda do Railway
+	servers {
+		trusted_proxies static private_ranges   # preserva o X-Forwarded-For da borda
+	}
+}
+
+:{$PORT} {
+	encode zstd gzip
+	respond /healthz 200
+
+	handle /api/* {
+		reverse_proxy {$SERVER_INTERNAL_URL}
+	}
+	handle /collab* {
+		reverse_proxy {$SERVER_INTERNAL_URL}   # upgrade de WebSocket é automático
+	}
+
+	handle {
+		root * /srv
+		header /assets/* Cache-Control "public, max-age=31536000, immutable"
+		header /index.html Cache-Control "no-cache"
+		# o worker do Drizzle executa código do usuário com `new Function` → precisa de unsafe-eval só nele
+		header /assets/drizzle.worker-* Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-eval'"
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		# 'wasm-unsafe-eval' é necessário para o libpg-query (WASM) no parser worker
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' wss:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'"
+		-Server
+	}
+}
+```
+
+- `.wasm` precisa sair com `Content-Type: application/wasm`. O Caddy já faz isso, mas vale um teste no e2e de "prod local".
+- Ajustar o `img-src` e o `connect-src` se houver avatares do GitHub/Google (`avatars.githubusercontent.com`, `lh3.googleusercontent.com`).
+
+#### `railway.json` de cada serviço
+
+O Railway lê *config as code* de um `railway.json`/`railway.toml`, e os valores do arquivo têm prioridade sobre o painel. Num monorepo, cada serviço aponta para o seu arquivo em **Settings → Config-as-code / Config file path** ⚠ (caminho absoluto a partir da raiz do repo). O schema `https://railway.com/railway.schema.json` dá autocomplete no editor.
+
+`apps/api/railway.json`:
+
+```json
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "apps/api/Dockerfile",
+    "watchPatterns": ["apps/api/**", "apps/collab/**", "packages/**", "pnpm-lock.yaml"]
+  },
+  "deploy": {
+    "preDeployCommand": ["node dist/migrate.js"],
+    "healthcheckPath": "/readyz",
+    "healthcheckTimeout": 120,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 5
+  }
+}
+```
+
+`apps/web/railway.json`:
+
+```json
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "apps/web/Dockerfile",
+    "watchPatterns": ["apps/web/**", "packages/**", "pnpm-lock.yaml"]
+  },
+  "deploy": { "healthcheckPath": "/healthz", "restartPolicyType": "ON_FAILURE" }
+}
+```
+
+- **Root Directory** dos dois serviços = raiz do repo (`/`). O `turbo prune` precisa do workspace inteiro, e o `dockerfilePath` é relativo à raiz.
+- Os **watchPatterns** evitam rebuild do `web` quando só a API muda, e vice-versa.
+- Por que Dockerfile e não o builder automático (Railpack): o Railpack detecta Node e Vite sozinho, mas o monorepo pnpm com `turbo prune`, o módulo nativo do `isolated-vm` e o Caddy com CSP pedem controle total. O Dockerfile também é o que o `docker compose --profile prod` usa localmente, então o que roda em produção é exatamente o que foi testado.
+- O Railway também tem uma DSL TypeScript de infraestrutura (`.railway/railway.ts`) ⚠. Não misturar: escolher **um** dos dois por serviço. A recomendação é ficar com `railway.json`, que é mais simples.
+
+#### `packages/db/drizzle.config.ts` e `migrate.ts`
+
+```ts
+// drizzle.config.ts — usado só em dev/CI (drizzle-kit generate | studio)
+import { defineConfig } from 'drizzle-kit';
+export default defineConfig({
+  dialect: 'postgresql',
+  schema: './src/schema/*.ts',          // inclui as tabelas geradas pelo Better Auth
+  out: './migrations',
+  dbCredentials: { url: process.env.DATABASE_URL! },
+  strict: true,
+});
+```
+
+```ts
+// src/migrate.ts — roda no preDeployCommand, sem drizzle-kit na imagem de produção
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { migrate } from 'drizzle-orm/node-postgres/migrator';
+const db = drizzle(process.env.DATABASE_URL!);
+await migrate(db, { migrationsFolder: new URL('../migrations', import.meta.url).pathname });
+await db.$client.end();
+```
+
+Regras de migração:
+- **Gerar** com `pnpm db:generate` e versionar o SQL. **Nunca** usar `drizzle-kit push` em staging ou produção.
+- O `preDeployCommand` roda na imagem nova, com acesso à rede privada, **antes** do novo container receber tráfego. Se a migração falhar, o deploy é abortado e a versão antiga continua no ar.
+- Durante o *overlap* (§15.5), a versão antiga e a nova rodam ao mesmo tempo contra o mesmo banco. Por isso as migrações seguem **expand/contract**: primeiro adiciona coluna nullable ou tabela nova; num deploy seguinte, remove o que ficou velho. Nada de `DROP`/`RENAME` no mesmo deploy que muda o código que usa a coluna.
+
+#### `apps/api/src/env.ts`
+
+```ts
+import { z } from 'zod';
+export const env = z.object({
+  NODE_ENV: z.enum(['development', 'test', 'production']),
+  PORT: z.coerce.number().default(8080),
+  APP_URL: z.string().url(),                   // URL pública (a do serviço web)
+  DATABASE_URL: z.string().url(),
+  BETTER_AUTH_SECRET: z.string().min(32),
+  BETTER_AUTH_URL: z.string().url(),
+  COLLAB_JWT_SECRET: z.string().min(32),
+  RESEND_API_KEY: z.string().optional(),       // obrigatório se MAIL_DRIVER=resend
+  MAIL_DRIVER: z.enum(['resend', 'smtp', 'console']).default('console'),
+  SMTP_URL: z.string().optional(),             // mailpit em dev
+  EMAIL_FROM: z.string(),
+  GITHUB_CLIENT_ID: z.string().optional(), GITHUB_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_CLIENT_ID: z.string().optional(), GOOGLE_CLIENT_SECRET: z.string().optional(),
+  REDIS_URL: z.string().url().optional(),      // fase 7
+}).parse(process.env);
+```
+
+Com variável faltando, o boot falha com uma mensagem clara e o healthcheck não passa. Assim o deploy quebrado nunca recebe tráfego. Um `superRefine` exige `RESEND_API_KEY` quando `NODE_ENV=production`.
+
+#### Saúde e desligamento (`health.ts`, `shutdown.ts`)
+
+- **`/healthz`:** o processo está de pé.
+- **`/readyz`:** `select 1` no Postgres e a última migração aplicada confere com a esperada. É o `healthcheckPath` do deploy: o Railway só troca o tráfego quando ele responde 200. O healthcheck **só é usado no deploy**, e não como monitoramento contínuo ⚠.
+- **Escutar em `::`:** `serve({ fetch: app.fetch, port: env.PORT, hostname: '::' })`. A rede privada do Railway é IPv6 em ambientes antigos, e IPv4 + IPv6 nos criados depois de out/2025 ⚠. Escutar em `::` cobre os dois casos.
+- **`SIGTERM`:** o Railway manda `SIGTERM` para o container antigo e `SIGKILL` depois da janela de *draining*, que **por padrão é 0 s** ⚠. O handler de shutdown:
+  1. para de aceitar conexões novas;
+  2. chama `hocuspocus` para **gravar todos os documentos pendentes** (o `onStoreDocument` tem debounce de até 10 s, e perder isso seria perder edições);
+  3. fecha os WebSockets com um código de "reconecte". Os clientes Yjs reconectam no container novo e reenviam o que faltar, então nada se perde;
+  4. `boss.stop({ graceful: true })`, `pool.end()`, `process.exit(0)` (o código de saída 0 importa para o Railway não acusar *crash*).
+
+### 15.3 Arquivos existentes editados
+
+| Arquivo | Mudança |
+|---|---|
+| `package.json` (raiz) | Vira raiz do workspace: `"private": true`, `"packageManager": "pnpm@10.x"` (o Corepack e o Railway leem esse campo), `"engines": { "node": ">=24 <25" }`, scripts do §15.4. As dependências do app vão para `apps/web/package.json`. |
+| `package-lock.json` | **Removido**: o lockfile passa a ser o `pnpm-lock.yaml`. |
+| `vite.config.ts` → `apps/web/vite.config.ts` | Alias do `lilconfig` com o caminho novo; `server.proxy` em dev para `/api` (→ `http://localhost:8080`) e `/collab` (`ws: true`), para o dev ter **a mesma origem** que a produção; o mesmo proxy em `preview`; `build: { target: 'es2022', sourcemap: 'hidden', outDir: 'dist' }`; o bloco `test` sai para o `vitest.config.ts` de cada pacote (ou `test.projects` na raiz). `worker.format: 'es'` e `optimizeDeps.include: ['libpg-query']` continuam. |
+| `tsconfig.json` | Vira `packages/config/tsconfig.base.json` (as mesmas flags estritas de hoje). Cada app ou pacote estende o base, e a raiz usa *project references*. O `lib` `WebWorker`/`DOM` fica só no `apps/web`. |
+| `.gitignore` | Acrescenta `.turbo/`, `**/dist/`, `.env`, `.env.*` (exceto `.env.example`), `playwright-report/`, `test-results/`. |
+| `e2e/*.mjs` | Migram para `@playwright/test` com `baseURL` configurável. O mesmo conjunto roda contra `pnpm dev` e contra `pnpm prod:local`. |
+| `src/workers/parser.worker.ts` | Sem mudança de lógica: o `?url` do `.wasm` continua funcionando no build. Entra um teste e2e que confirma o carregamento do WASM servido pelo Caddy. |
+| `README.md` | Seções "Rodando local (com backend)", "Variáveis de ambiente" e "Deploy no Railway" (resumo do §15.7). |
+
+Quando a fase 2 criar o `packages/db`, o `drizzle.config.ts` nasce já no formato do §15.2. Não existe um arquivo hoje para editar.
+
+### 15.4 Comandos e variáveis
+
+**Scripts da raiz (`package.json`):**
+
+```jsonc
+{
+  "scripts": {
+    "infra:up":    "docker compose up -d postgres mailpit",
+    "infra:down":  "docker compose down",
+    "dev":         "turbo run dev",                       // web (vite :5173) + api (tsx watch :8080)
+    "build":       "turbo run build",
+    "typecheck":   "turbo run typecheck",
+    "lint":        "turbo run lint",
+    "test":        "turbo run test",
+    "e2e":         "turbo run e2e",
+    "db:generate": "pnpm --filter @erd/db exec drizzle-kit generate",
+    "db:migrate":  "pnpm --filter @erd/db migrate",
+    "db:studio":   "pnpm --filter @erd/db exec drizzle-kit studio",
+    "env:check":   "pnpm --filter @erd/api env:check",    // valida o .env com o mesmo zod do boot
+    "docker:build":"docker build -f apps/api/Dockerfile -t erd-server . && docker build -f apps/web/Dockerfile -t erd-web .",
+    "prod:local":  "docker compose --profile prod up --build",   // as imagens reais + postgres + mailpit
+    "verify":      "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm docker:build"
+  }
+}
+```
+
+- **Rodar local:** `pnpm i && pnpm infra:up && pnpm db:migrate && pnpm dev`.
+- **Antes de abrir PR:** `pnpm verify`.
+- **Para reproduzir um problema de produção:** `pnpm prod:local`.
+
+**Variáveis por serviço no Railway** (colar no *Raw Editor* de cada serviço). Para gerar os segredos: `openssl rand -base64 32`.
+
+`server`:
+
+```env
+NODE_ENV=production
+PORT=8080
+APP_URL=https://${{web.RAILWAY_PUBLIC_DOMAIN}}          # trocar pelo domínio próprio quando houver
+BETTER_AUTH_URL=${{APP_URL}}
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+BETTER_AUTH_SECRET=<gerado>
+COLLAB_JWT_SECRET=<gerado>
+MAIL_DRIVER=resend
+RESEND_API_KEY=<do painel do Resend>
+EMAIL_FROM="ERD Builder <notificacoes@mail.seudominio.com>"
+GITHUB_CLIENT_ID=... GITHUB_CLIENT_SECRET=...
+GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=...
+RAILWAY_DEPLOYMENT_DRAINING_SECONDS=30
+```
+
+`web`:
+
+```env
+SERVER_INTERNAL_URL=http://${{server.RAILWAY_PRIVATE_DOMAIN}}:${{server.PORT}}
+```
+
+- `${{Servico.VAR}}` são *reference variables*: o Railway resolve o valor e ainda ordena o deploy, então o `server` espera o Postgres subir.
+- O `PORT` do `server` é fixado em 8080 porque o `web` precisa saber para onde fazer o proxy. O Railway respeita um `PORT` definido como variável.
+- O `web` não precisa de nenhuma variável `VITE_*`: o SPA chama `/api` e monta a URL do WebSocket a partir de `location` (`wss://<host>/collab`). Assim **a mesma imagem serve staging e produção**.
+
+### 15.5 Deploys sem downtime (com WebSocket)
+
+- **Overlap** (`RAILWAY_DEPLOYMENT_OVERLAP_SECONDS`, opcional): por quanto tempo o container antigo continua vivo depois que o novo fica ativo. **Draining** (`RAILWAY_DEPLOYMENT_DRAINING_SECONDS=30`): quanto tempo o container antigo tem entre o `SIGTERM` e o `SIGKILL`. ⚠ Conferir os nomes e os defaults atuais na documentação.
+- O tráfego novo vai para o container novo assim que ele passa no healthcheck. Os WebSockets antigos são fechados pelo handler de `SIGTERM` (§15.2), e os clientes reconectam.
+- **Uma réplica do `server` até a fase 7.** Com duas réplicas sem Redis, dois usuários do mesmo documento poderiam cair em instâncias diferentes e não se ver. Antes de subir `numReplicas`, ligar a extensão Redis do Hocuspocus (§6.2).
+- **Sem volume** no `server`: todo o estado está no Postgres, e o container é descartável.
+
+### 15.6 Ambientes, CI, backups e custos
+
+- **`staging`:** criado duplicando o `production` (*Environments → New → Duplicate*), com banco próprio. Deploya da branch `develop` (ou de `main`), e o `production` deploya de tags ou de `main` com aprovação. A escolha fica para a etapa.
+- **PR environments:** opcionais, em *Project Settings → Environments*. Cada PR ganha um ambiente temporário, apagado ao fazer merge ou fechar o PR. Usar reference variables ao Postgres para o deploy esperar o banco ⚠.
+- **CI:** o GitHub Actions roda `pnpm verify` e o e2e contra `pnpm prod:local`. No Railway, ligar **"Wait for CI"** no serviço, para que o deploy só aconteça depois dos checks verdes ⚠.
+- **Backups do Postgres:** agendar *volume backups* (diário e semanal) na aba Backups do serviço Postgres. Avaliar *point-in-time recovery* quando houver usuários reais ⚠. Fazer, além disso, um `pg_dump` lógico semanal num job do GitHub Actions (usando a `DATABASE_PUBLIC_URL`), guardado fora do Railway, como cópia independente do provedor.
+- **Custos:** configurar *usage limits* e alertas de gasto no workspace. O plano Hobby cobra assinatura mais uso. ⚠ Conferir os preços atuais.
+- **Logs:** em JSON (`pino`), para filtrar por `level`, `canvasId` e `userId` na aba de logs do Railway. Os alertas de crash/restart do Railway vão para o e-mail.
+
+### 15.7 Passo a passo: subir no Railway
+
+**Pré-requisitos (uma vez):**
+
+1. Conta no Railway ligada ao GitHub, com o app do Railway autorizado no repositório `erd-to-schema`.
+2. CLI: `npm i -g @railway/cli` e depois `railway login`.
+3. (Recomendado) Um domínio próprio. Sem ele, dá para começar com o `*.up.railway.app` do serviço `web`.
+4. Conta no Resend, com o subdomínio de envio (por exemplo, `mail.seudominio.com`) adicionado e os registros **SPF, DKIM e DMARC** criados no DNS. A chave de API sai de *API Keys*.
+5. OAuth apps:
+   - **GitHub:** *Settings → Developer settings → OAuth Apps*, com callback `https://<domínio>/api/auth/callback/github`.
+   - **Google:** *Cloud Console → Credentials → OAuth client ID (Web)*, com redirect `https://<domínio>/api/auth/callback/google`.
+   - Criar um par de credenciais para staging e outro para produção.
+
+**Criar o projeto:**
+
+6. No painel: **New Project → Empty Project**. Dar o nome `erd-builder`.
+7. **+ New → Database → PostgreSQL.** Renomear o serviço para `Postgres`; o nome é usado nas referências `${{Postgres.…}}`.
+8. **+ New → GitHub Repo → erd-to-schema.** Renomear para `server`. Em *Settings*:
+   - **Root Directory:** `/`;
+   - **Config file path:** `/apps/api/railway.json`;
+   - **Branch:** `main` (ou a de produção);
+   - ligar **Wait for CI**;
+   - **não** gerar domínio público.
+9. Em **server → Variables → Raw Editor**, colar o bloco `server` do §15.4 com os segredos preenchidos.
+10. **+ New → GitHub Repo → erd-to-schema** de novo. Renomear para `web`. Em *Settings*:
+    - **Root Directory:** `/`;
+    - **Config file path:** `/apps/web/railway.json`;
+    - em **Networking → Generate Domain** (ou **Custom Domain**, criando no DNS o CNAME que o Railway mostrar);
+    - em *Variables*, colar o bloco `web` do §15.4.
+11. Se usar domínio próprio, voltar ao `server` e ajustar `APP_URL=https://app.seudominio.com`. Ajustar também as callbacks do OAuth para esse domínio.
+12. Clicar em **Deploy** (ou fazer `git push`). Acompanhar a aba *Deployments*. A ordem esperada:
+    1. `Postgres` sobe;
+    2. `server` faz o build, roda o `preDeployCommand` (migrações) e passa no `/readyz`;
+    3. `web` faz o build e passa no `/healthz`.
+
+**Verificar:**
+
+13. Abrir o domínio do `web`, criar uma conta e confirmar que o e-mail de verificação chegou (o painel do Resend mostra a entrega).
+14. Abrir o mesmo projeto em duas janelas anônimas com usuários diferentes e conferir a edição ao vivo no canvas e nos painéis.
+15. Pela CLI:
+    - `railway link` (escolher projeto e ambiente);
+    - `railway logs --service server`;
+    - `railway ssh --service server` para inspecionar o container, se precisar ⚠.
+
+**Depois:**
+
+16. **Backups:** *Postgres → Backups → schedule*.
+17. **Staging:** *Environments → New Environment → Duplicate production*. Ajustar a branch, os segredos próprios (OAuth de staging, chave do Resend e `APP_URL`) e um domínio `staging.seudominio.com`.
+18. **Limites de gasto:** *Workspace → Usage → limits/alerts*.
+19. **Rollback:** em *Deployments*, escolher o deploy anterior e clicar em **Redeploy/Rollback**. Se o problema foi uma migração, preferir uma migração corretiva para frente; o rollback do código só é seguro se a migração foi *expand* (§15.2).
+20. **Rotina de deploy daqui em diante:** PR → CI verde → merge → o Railway faz o deploy sozinho. Mudanças de schema exigem `pnpm db:generate` com a migração commitada no mesmo PR.
+
+### 15.8 Checklist de conformidade por fase
+
+| Fase | O que precisa estar pronto para o deploy |
+|---|---|
+| 0 | `pnpm-lock.yaml`, `packageManager`, `.node-version`, `turbo.json`; `apps/web/Dockerfile` + `Caddyfile` já servindo o app local (sem backend) num serviço `web` de staging. Assim o pipeline de deploy existe desde o primeiro dia. |
+| 2 / **2B** | Tudo do §15.2 a §15.4: `server` + `Postgres` no Railway, migrações no pre-deploy, `env.ts`, `/readyz`, Resend em staging, OAuth de staging, CI com Wait for CI. |
+| 3 | Proxy de `/collab` no Caddy; *draining* de 30 s e shutdown que salva os documentos; o `isolated-vm` compilando na imagem (toolchain no build, `--no-node-snapshot`); teste de redeploy no meio de uma edição, sem perder nada. |
+| 4 | DNS do Resend em produção (SPF/DKIM/DMARC); limites de convite; pg-boss migrado. |
+| 6 | Backups agendados + `pg_dump` externo; ambiente de produção separado do staging; alertas de gasto; logs JSON; teste de carga no staging. |
+| 7 | Serviço `Redis`; extensão Redis do Hocuspocus; `numReplicas` > 1 no `server`; opcionalmente, separar o `collab` como serviço próprio (o `/collab` do Caddy aponta para ele). |
