@@ -1,0 +1,34 @@
+# Dev: `pnpm infra:up` sobe só o Postgres e o Mailpit.
+# Produção local: `pnpm prod:local` sobe as imagens reais (as mesmas do Railway) + Postgres + Mailpit.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: erd
+      POSTGRES_PASSWORD: erd
+      POSTGRES_DB: erd
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U erd"]
+      interval: 2s
+      retries: 30
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports: ["1025:1025", "8025:8025"]
+
+  web:
+    profiles: [prod]
+    build: { context: ., dockerfile: apps/web/Dockerfile }
+    environment:
+      PORT: 8080
+      SERVER_INTERNAL_URL: http://server:8080
+    ports: ["8081:8080"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 3s
+      retries: 20
+
+volumes:
+  pgdata:

@@ -1,0 +1,18 @@
+{
+  "name": "@erd/e2e",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "e2e": "playwright test",
+    "typecheck": "tsc -p .",
+    "lint": "oxlint -c ../.oxlintrc.json ."
+  },
+  "devDependencies": {
+    "@erd/web": "workspace:*",
+    "@playwright/test": "1.56.1",
+    "@types/node": "^26.6.5",
+    "@erd/config": "workspace:*",
+    "typescript": "^7.0.2"
+  }
+}

@@ -2,12 +2,16 @@
 
 Canvas interativo de ERD em que **canvas, SQL (Postgres), Prisma e Drizzle são quatro vistas do mesmo modelo**. Editar qualquer uma atualiza as outras três, e o canvas se redesenha sozinho. Implementado a partir de [`docs/erd-builder-plan.md`](docs/erd-builder-plan.md).
 
+Monorepo pnpm + Turborepo (plano de evolução em [`docs/fullstack-collab-plan.md`](docs/fullstack-collab-plan.md)).
+
 ```bash
-npm install
-npm run dev        # http://localhost:5173
-npm test           # unitários + round-trip baseados em propriedade (vitest + fast-check)
-npm run build
-npm run e2e        # roteiros Playwright contra o dev server rodando
+pnpm install
+pnpm dev           # http://localhost:5173
+pnpm test          # unitários + round-trip baseados em propriedade (vitest + fast-check)
+pnpm build
+pnpm e2e           # @playwright/test (sobe o Vite sozinho; URL=... roda contra outro servidor)
+pnpm verify        # lint + typecheck + test + build (rodar antes de abrir PR)
+pnpm prod:local    # as imagens Docker reais (as mesmas do Railway)
 ```
 
 ## O que dá para fazer
@@ -50,14 +54,14 @@ Os atalhos ficam desativados quando o foco está num input ou num editor (no Win
 ## Arquitetura
 
 ```
-src/model/        tipos canônicos + capability matrix, reconcile(), tags (pivot/histórico), layout
-src/formats/      sql | prisma | drizzle: generate.ts (modelo → texto) e parse.ts (texto → modelo)
-src/sync/         motor de sync (status por painel, seq, debounce, conflitos) + cliente dos workers
-src/workers/      parser.worker (libpg-query WASM + prisma-ast), drizzle.worker (sandbox)
-src/store/        zustand + immer + zundo (undo de schema/layout/meta/notas) e ações do canvas
-src/canvas/       React Flow: nodes, edges (pé-de-galinha), toolbar, inspector, atalhos, borracha
-src/persistence/  IndexedDB, .zip do projeto, notas .md, salvar arquivo (File System Access API)
-src/export/       PNG/PDF (html-to-image 1.11.11 pinado + jsPDF)
+packages/model/src/          tipos canônicos + capability matrix, reconcile(), tags, layout, .zip do projeto
+packages/model/src/formats/  sql | prisma | drizzle: generate.ts (modelo → texto) e parse.ts (texto → modelo)
+apps/web/src/sync/         motor de sync (status por painel, seq, debounce, conflitos) + cliente dos workers
+apps/web/src/workers/      parser.worker (libpg-query WASM + prisma-ast), drizzle.worker (sandbox)
+apps/web/src/store/        zustand + immer + zundo (undo de schema/layout/meta/notas) e ações do canvas
+apps/web/src/canvas/       React Flow: nodes, edges (pé-de-galinha), toolbar, inspector, atalhos, borracha
+apps/web/src/persistence/  IndexedDB, .zip do projeto, notas .md, salvar arquivo (File System Access API)
+apps/web/src/export/       PNG/PDF (html-to-image 1.11.11 pinado + jsPDF)
 ```
 
 - **SQL:** usa o `libpg-query`, que é o parser real do Postgres compilado para WASM e roda num Web Worker. As expressões são reconstruídas com o `pgsql-deparser`. O parser lê `CREATE TABLE/TYPE/INDEX`, `ALTER TABLE` e `COMMENT ON`; outros statements geram um aviso e são ignorados.

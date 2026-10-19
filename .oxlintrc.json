@@ -1,0 +1,44 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "typescript",
+    "react",
+    "react-hooks",
+    "import"
+  ],
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "off",
+    "no-unused-vars": "off",
+    "typescript/no-explicit-any": "error",
+    "react/refs": "off",
+    "react/set-state-in-effect": "off"
+  },
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/node_modules/**",
+    "**/migrations/**",
+    "e2e/artifacts/**"
+  ],
+  "overrides": [
+    {
+      "files": [
+        "packages/model/**"
+      ],
+      "rules": {
+        "react-hooks/rules-of-hooks": "off"
+      }
+    },
+    {
+      "files": [
+        "apps/web/src/canvas/nodes/NoteNode.tsx"
+      ],
+      "rules": {
+        "react-hooks/rules-of-hooks": "off"
+      }
+    }
+  ]
+}
