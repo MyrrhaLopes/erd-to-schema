@@ -6,7 +6,8 @@ import { CodePanel } from './ui/CodePanel';
 import { ChangeToast, ExportDialog, HelpDialog } from './ui/Dialogs';
 import { useUi } from './store/useUi';
 import { useProjectStore } from './store/useProjectStore';
-import { bootstrap } from './bootstrap';
+import { openLocalSession } from './collab/local';
+import { activateSession, deactivateSession } from './collab/openCanvas';
 
 function Splitter() {
   const set = useUi((s) => s.set);
@@ -47,7 +48,17 @@ export default function App() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    bootstrap().catch((e) => setError(String(e?.message ?? e)));
+    let cancelled = false;
+    openLocalSession()
+      .then((s) => {
+        if (cancelled) s.destroy();
+        else activateSession(s);
+      })
+      .catch((e) => setError(String(e?.message ?? e)));
+    return () => {
+      cancelled = true;
+      deactivateSession();
+    };
   }, []);
 
   return (

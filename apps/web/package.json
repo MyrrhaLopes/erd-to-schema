@@ -12,15 +12,19 @@
     "lint": "oxlint -c ../../.oxlintrc.json ."
   },
   "dependencies": {
+    "@codemirror/autocomplete": "^6.20.4",
     "@codemirror/commands": "^6.11.1",
     "@codemirror/lang-javascript": "^6.2.5",
     "@codemirror/lang-markdown": "^6.5.2",
     "@codemirror/lang-sql": "^6.10.0",
     "@codemirror/language": "^6.13.1",
     "@codemirror/lint": "^6.9.7",
+    "@codemirror/search": "^6.7.2",
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.14",
+    "@erd/crdt": "workspace:*",
     "@erd/model": "workspace:*",
+    "@erd/sync": "workspace:*",
     "@xyflow/react": "^12.12.0",
     "codemirror": "^6.0.2",
     "comlink": "^4.4.2",
@@ -36,7 +40,10 @@
     "react-dom": "^19.3.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
-    "zundo": "^2.3.0",
+    "y-codemirror.next": "^0.3.6",
+    "y-indexeddb": "^9.0.12",
+    "y-protocols": "^1.0.7",
+    "yjs": "^13.6.33",
     "zustand": "^5.0.15"
   },
   "devDependencies": {

@@ -18,6 +18,8 @@ interface UiState {
   toast: string | null;
   /** Pedido de "ver em código": abre o painel e pede ao editor pra rolar até a definição da tabela */
   jumpToTable: { id: Id; nonce: number } | null;
+  /** Seleção a restaurar no canvas (ex.: junto com um undo) */
+  selectionRequest: { nodes: Id[]; edges: Id[]; nonce: number } | null;
   set: (p: Partial<UiState>) => void;
 }
 
@@ -34,6 +36,7 @@ export const useUi = create<UiState>((set) => ({
   helpOpen: false,
   toast: null,
   jumpToTable: null,
+  selectionRequest: null,
   set: (p) => set(p),
 }));
 

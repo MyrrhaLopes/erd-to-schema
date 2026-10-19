@@ -46,10 +46,17 @@ test('fluxo principal: Ctrl+Seta, painéis, erros, undo, borracha, filtros e exp
   await replaceEditorText(page, nd);
   await expect.poll(() => sqlText(page), { timeout: 15_000 }).toMatch(/"Broken"[\s\S]*created_at timestamp DEFAULT now\(\)/);
 
-  // undo fora do editor desfaz a última mudança do modelo
+  // Ctrl+Z no editor desfaz a digitação, e o bot reaplica o resultado no modelo
+  await page.locator('.cm-content').first().click();
+  await page.keyboard.press('Control+z');
+  await expect.poll(() => sqlText(page), { timeout: 15_000 }).not.toMatch(/"Broken"[\s\S]*created_at/);
+
+  // Ctrl+Z no canvas desfaz a última mudança feita no canvas (aqui: a tabela criada com Ctrl+Seta)
   await page.locator('.react-flow__pane').click({ position: { x: 300, y: 800 } });
   await page.keyboard.press('Control+z');
-  await expect.poll(() => sqlText(page)).not.toMatch(/"Broken"[\s\S]*created_at/);
+  await expect.poll(() => page.evaluate(() => window.__erd.tableNames())).not.toContain('invoices');
+  await page.keyboard.press('Control+Shift+z');
+  await expect.poll(() => page.evaluate(() => window.__erd.tableNames())).toContain('invoices');
 
   // borracha
   await page.keyboard.press('Shift+!');

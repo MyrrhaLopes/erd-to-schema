@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { useProjectStore } from '../src/store/useProjectStore';
 import { createTable, convertNoteToPivot } from '../src/store/actions';
 import { newId } from '@erd/model/naming';
+import { memorySession } from './session';
 
 describe('convertNoteToPivot', () => {
   it('converts a bidirectional N:N note relation into a real pivot table', () => {
+    memorySession();
     const t1Id = createTable({ x: 0, y: 0 });
     const t2Id = createTable({ x: 300, y: 0 });
 

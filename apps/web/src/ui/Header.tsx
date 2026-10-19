@@ -13,7 +13,6 @@ import {
   Redo2,
   Undo2,
 } from 'lucide-react';
-import { useStore } from 'zustand';
 import { useProjectStore, getProject, undo, redo } from '../store/useProjectStore';
 import { useUi, showToast } from '../store/useUi';
 import { allTags } from '@erd/model/tags';
@@ -21,8 +20,9 @@ import { autoLayout, emptyProject } from '@erd/model/project';
 import { exportProjectJson, exportProjectZip, readImportFile } from '../persistence/projectFile';
 import { pickFile } from '../persistence/files';
 import { exportNotesZip } from '../persistence/notes';
-import { buildSampleProject, loadAndReset } from '../bootstrap';
-import { onLocalEdit, flush } from '../sync/engine';
+import { buildSampleProject } from '../collab/sample';
+import { getSession } from '../collab/session';
+import { codeText, IMPORT_ORIGIN } from '@erd/crdt';
 import { computeVisibility } from '../canvas/derive';
 import { FORMAT_LABEL } from '@erd/model/types';
 
@@ -133,10 +133,17 @@ export function Header() {
   const name = useProjectStore((s) => s.name);
   const setName = useProjectStore((s) => s.setName);
   const commit = useProjectStore((s) => s.commit);
+  const loadProject = useProjectStore((s) => s.loadProject);
+  const readOnly = useProjectStore((s) => s.readOnly);
   const panelOpen = useUi((s) => s.panelOpen);
   const set = useUi((s) => s.set);
-  const canUndo = useStore(useProjectStore.temporal, (s) => s.pastStates.length > 0);
-  const canRedo = useStore(useProjectStore.temporal, (s) => s.futureStates.length > 0);
+  const canUndo = useProjectStore((s) => s.canUndo);
+  const canRedo = useProjectStore((s) => s.canRedo);
+  const [draftName, setDraftName] = useState(name);
+  const editingName = useRef(false);
+  useEffect(() => {
+    if (!editingName.current) setDraftName(name);
+  }, [name]);
 
   const openFile = async () => {
     const f = await pickFile('.zip,.json,.sql,.prisma,.ts,.js,.md');
@@ -144,12 +151,19 @@ export function Header() {
     try {
       const r = await readImportFile(f);
       if (r.kind === 'project') {
-        loadAndReset(r.project);
+        loadProject(r.project);
         showToast(`Projeto "${r.project.name}" aberto`);
       } else if (r.kind === 'schema') {
+        const session = getSession();
+        if (!session) return;
         set({ panelTab: r.format, panelOpen: true });
-        onLocalEdit(r.format, r.text);
-        flush(r.format);
+        // o texto importado entra no painel como está (formatação e comentários preservados) e o bot o traduz
+        const t = codeText(session.doc, r.format);
+        session.doc.transact(() => {
+          t.delete(0, t.length);
+          t.insert(0, r.text);
+        }, IMPORT_ORIGIN);
+        session.bot.flush(r.format);
         showToast(`${FORMAT_LABEL[r.format]} importado`);
       } else {
         commit((d) => {
@@ -173,8 +187,16 @@ export function Header() {
           <Database size={15} />
         </span>
         <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
+          value={draftName}
+          readOnly={readOnly}
+          onFocus={() => (editingName.current = true)}
+          onChange={(e) => setDraftName(e.target.value)}
+          onBlur={() => {
+            editingName.current = false;
+            if (draftName.trim()) setName(draftName.trim());
+            else setDraftName(name);
+          }}
+          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
           className="w-48 rounded px-1.5 py-1 text-[13.5px] font-semibold text-slate-800 outline-none hover:bg-slate-50 focus:bg-slate-50"
           title="Nome do projeto"
         />
@@ -192,7 +214,7 @@ export function Header() {
             <MenuItem
               onClick={() => {
                 close();
-                if (confirm('Criar um projeto vazio? O atual continua disponível se você salvou o .zip.')) loadAndReset(emptyProject());
+                if (confirm('Criar um projeto vazio? O atual continua disponível se você salvou o .zip.')) loadProject(emptyProject());
               }}
             >
               Novo projeto vazio
@@ -200,7 +222,7 @@ export function Header() {
             <MenuItem
               onClick={async () => {
                 close();
-                if (confirm('Carregar o projeto de exemplo? O projeto atual será substituído.')) loadAndReset(await buildSampleProject());
+                if (confirm('Carregar o projeto de exemplo? O projeto atual será substituído.')) loadProject(await buildSampleProject());
               }}
             >
               Carregar exemplo

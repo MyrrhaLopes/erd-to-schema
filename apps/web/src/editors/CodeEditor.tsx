@@ -1,26 +1,50 @@
-import { useEffect, useRef } from 'react';
-import { basicSetup } from 'codemirror';
-import { Annotation, EditorState, Transaction, type Extension } from '@codemirror/state';
-import { EditorView, keymap } from '@codemirror/view';
-import { indentWithTab } from '@codemirror/commands';
-import { lintGutter, setDiagnostics, type Diagnostic as CmDiagnostic } from '@codemirror/lint';
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import * as Y from 'yjs';
+import type { Awareness } from 'y-protocols/awareness';
+import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next';
+import { EditorState, RangeSetBuilder, StateEffect, StateField, type Extension } from '@codemirror/state';
+import {
+  Decoration,
+  EditorView,
+  crosshairCursor,
+  drawSelection,
+  dropCursor,
+  highlightActiveLine,
+  highlightActiveLineGutter,
+  highlightSpecialChars,
+  keymap,
+  lineNumbers,
+  rectangularSelection,
+  type DecorationSet,
+} from '@codemirror/view';
+import { defaultKeymap, indentWithTab } from '@codemirror/commands';
+import { bracketMatching, defaultHighlightStyle, foldGutter, foldKeymap, indentOnInput, syntaxHighlighting } from '@codemirror/language';
+import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
+import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
+import { lintGutter, lintKeymap, setDiagnostics, type Diagnostic as CmDiagnostic } from '@codemirror/lint';
 import type { Diagnostic } from '@erd/model/formats/common';
 
-/** Marca transações vindas do modelo — o listener não agenda novo parse para elas */
-export const Remote = Annotation.define<boolean>();
-
 interface Props {
-  value: string;
+  /** Texto compartilhado: a digitação vai direto para o Y.Text (y-codemirror.next) */
+  ytext: Y.Text;
+  awareness?: Awareness;
   language: Extension;
   diagnostics?: Diagnostic[];
-  onChange?: (text: string) => void;
+  /** Trechos realçados (ex.: blocos divergentes) */
+  marks?: { from: number; to: number; className: string }[];
   onSave?: () => void;
   onBlur?: () => void;
+  onFormat?: () => void;
   readOnly?: boolean;
   className?: string;
   /** Posição (offset) a rolar e selecionar — só dispara quando `revealToken` muda */
   revealOffset?: number | null;
   revealToken?: number | null;
+}
+
+export interface CodeEditorHandle {
+  /** Substitui o texto inteiro como uma edição normal (entra no undo do editor) */
+  replaceAll(text: string): void;
 }
 
 const theme = EditorView.theme({
@@ -29,26 +53,100 @@ const theme = EditorView.theme({
   '.cm-gutters': { backgroundColor: 'var(--editor-gutter)', borderRight: '1px solid var(--border)', color: 'var(--muted)' },
   '.cm-activeLineGutter, .cm-activeLine': { backgroundColor: 'var(--editor-active)' },
   '&.cm-focused': { outline: 'none' },
+  '.erd-divergent': { backgroundColor: '#fef3c7', boxShadow: 'inset 3px 0 0 #f59e0b' },
 });
 
-export function CodeEditor({ value, language, diagnostics, onChange, onSave, onBlur, readOnly, className, revealOffset, revealToken }: Props) {
+const setMarks = StateEffect.define<{ from: number; to: number; className: string }[]>();
+const marksField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(deco, tr) {
+    deco = deco.map(tr.changes);
+    for (const e of tr.effects) {
+      if (!e.is(setMarks)) continue;
+      const b = new RangeSetBuilder<Decoration>();
+      const len = tr.state.doc.length;
+      for (const m of [...e.value].sort((a, c) => a.from - c.from)) {
+        const from = Math.max(0, Math.min(len, m.from));
+        const to = Math.max(from, Math.min(len, m.to));
+        // decoração de linha em cada linha do trecho
+        for (let pos = from; pos <= to; ) {
+          const line = tr.state.doc.lineAt(pos);
+          b.add(line.from, line.from, Decoration.line({ class: m.className }));
+          if (line.to >= to) break;
+          pos = line.to + 1;
+        }
+      }
+      deco = b.finish();
+    }
+    return deco;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
+/** O `basicSetup` sem o histórico do CodeMirror: o undo do editor é o do Yjs (desfaz só a sua digitação) */
+const setup: Extension = [
+  lineNumbers(),
+  highlightActiveLineGutter(),
+  highlightSpecialChars(),
+  foldGutter(),
+  drawSelection(),
+  dropCursor(),
+  EditorState.allowMultipleSelections.of(true),
+  indentOnInput(),
+  syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+  bracketMatching(),
+  closeBrackets(),
+  rectangularSelection(),
+  crosshairCursor(),
+  highlightActiveLine(),
+  highlightSelectionMatches(),
+  keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...foldKeymap, ...lintKeymap]),
+];
+
+export const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEditor(
+  { ytext, awareness, language, diagnostics, marks, onSave, onBlur, onFormat, readOnly, className, revealOffset, revealToken },
+  ref,
+) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
-  const handlers = useRef({ onChange, onSave, onBlur });
-  handlers.current = { onChange, onSave, onBlur };
+  const handlers = useRef({ onSave, onBlur, onFormat });
+  handlers.current = { onSave, onBlur, onFormat };
+
+  useImperativeHandle(ref, () => ({
+    replaceAll(text: string) {
+      const v = view.current;
+      if (!v) return;
+      const cur = v.state.doc.toString();
+      if (cur === text) return;
+      let s = 0;
+      while (s < cur.length && s < text.length && cur[s] === text[s]) s++;
+      let ec = cur.length;
+      let en = text.length;
+      while (ec > s && en > s && cur[ec - 1] === text[en - 1]) {
+        ec--;
+        en--;
+      }
+      v.dispatch({ changes: { from: s, to: ec, insert: text.slice(s, en) } });
+    },
+  }));
 
   useEffect(() => {
+    const undoManager = new Y.UndoManager(ytext, { trackedOrigins: new Set() });
     const v = new EditorView({
       parent: host.current!,
       state: EditorState.create({
-        doc: value,
+        doc: ytext.toString(),
         extensions: [
-          basicSetup,
+          setup,
           language,
           lintGutter(),
           theme,
+          marksField,
           EditorState.readOnly.of(!!readOnly),
+          EditorView.editable.of(!readOnly),
+          yCollab(ytext, awareness ?? null, { undoManager }),
           keymap.of([
+            ...yUndoManagerKeymap,
             indentWithTab,
             {
               key: 'Mod-s',
@@ -58,12 +156,15 @@ export function CodeEditor({ value, language, diagnostics, onChange, onSave, onB
                 return true;
               },
             },
+            {
+              key: 'Shift-Alt-f',
+              preventDefault: true,
+              run: () => {
+                handlers.current.onFormat?.();
+                return true;
+              },
+            },
           ]),
-          EditorView.updateListener.of((u) => {
-            if (!u.docChanged) return;
-            if (u.transactions.some((tr) => tr.annotation(Remote))) return;
-            handlers.current.onChange?.(u.state.doc.toString());
-          }),
           EditorView.domEventHandlers({
             blur: () => {
               handlers.current.onBlur?.();
@@ -74,30 +175,12 @@ export function CodeEditor({ value, language, diagnostics, onChange, onSave, onB
       }),
     });
     view.current = v;
-    return () => v.destroy();
-    // o editor é criado uma vez; `value` é sincronizado no efeito abaixo
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language, readOnly]);
-
-  // texto vindo do modelo: aplica só o trecho que mudou, como transação remota sem histórico
-  useEffect(() => {
-    const v = view.current;
-    if (!v) return;
-    const cur = v.state.doc.toString();
-    if (cur === value) return;
-    let start = 0;
-    while (start < cur.length && start < value.length && cur[start] === value[start]) start++;
-    let endCur = cur.length;
-    let endNew = value.length;
-    while (endCur > start && endNew > start && cur[endCur - 1] === value[endNew - 1]) {
-      endCur--;
-      endNew--;
-    }
-    v.dispatch({
-      changes: { from: start, to: endCur, insert: value.slice(start, endNew) },
-      annotations: [Remote.of(true), Transaction.addToHistory.of(false)],
-    });
-  }, [value]);
+    return () => {
+      v.destroy();
+      undoManager.destroy();
+      view.current = null;
+    };
+  }, [ytext, awareness, language, readOnly]);
 
   useEffect(() => {
     const v = view.current;
@@ -108,7 +191,11 @@ export function CodeEditor({ value, language, diagnostics, onChange, onSave, onB
       return { from, to: Math.max(from, Math.min(len, d.to)), severity: d.severity, message: d.message };
     });
     v.dispatch(setDiagnostics(v.state, diags));
-  }, [diagnostics, value]);
+  }, [diagnostics, ytext]);
+
+  useEffect(() => {
+    view.current?.dispatch({ effects: setMarks.of(marks ?? []) });
+  }, [marks, ytext]);
 
   // "ver em código": rola até a posição pedida e seleciona a linha — só no gatilho (revealToken), nunca ao digitar
   useEffect(() => {
@@ -125,4 +212,4 @@ export function CodeEditor({ value, language, diagnostics, onChange, onSave, onB
   }, [revealToken]);
 
   return <div ref={host} className={className} />;
-}
+});

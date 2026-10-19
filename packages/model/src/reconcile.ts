@@ -15,6 +15,17 @@ export interface ReconcileResult {
   schema: SchemaModel;
   meta: Record<Id, EntityMeta>;
   changes: string[];
+  /** ID do parse → ID final (tabelas, enums, colunas e relações) */
+  idMap: Map<Id, Id>;
+}
+
+export interface ReconcileOptions {
+  /**
+   * Entidades (tabelas/enums) que não podem ser tocadas: as que vieram de um bloco de
+   * texto que não parseia, ou de um bloco divergente. Mantêm o estado anterior (e as
+   * relações que saem delas), em vez de serem alteradas ou apagadas.
+   */
+  frozen?: ReadonlySet<Id>;
 }
 
 const FORMAT_NAME_KEYS: Record<Format, (keyof FormatNames)[]> = {
@@ -71,6 +82,7 @@ export function reconcile(
   parsed: ParsedSchema,
   format: Format,
   signature?: ColumnSignature,
+  opts: ReconcileOptions = {},
 ): ReconcileResult {
   const caps = CAPABILITIES[format];
   const changes: string[] = [];
@@ -249,6 +261,7 @@ export function reconcile(
   const prevRels = new Map(P.relationships.map((r) => [relKey(r, (x) => x, (x) => x), r]));
   const usedRel = new Set<Relationship>();
   const relationships: Relationship[] = [];
+  const relIdMap = new Map<Id, Id>();
   for (const nr of N.relationships) {
     const mapped: Relationship = {
       ...nr,
@@ -282,6 +295,7 @@ export function reconcile(
     } else {
       changes.push(nr.kind === 'fk' ? 'Relação FK adicionada' : 'Relação-nota adicionada');
     }
+    relIdMap.set(nr.id, mapped.id);
     relationships.push(mapped);
   }
   const finalTableIds = new Set(tables.map((t) => t.id));
@@ -335,7 +349,52 @@ export function reconcile(
   // meta de notas/outros itens não-schema continua
   for (const [id, m] of Object.entries(prev.meta)) if (!keepIds.has(id) && !isSchemaId(P, id)) meta[id] = m;
 
-  return { schema: { tables, enums, relationships }, meta, changes };
+  const idMap = new Map<Id, Id>([...tableIdMap, ...colIdMap, ...relIdMap]);
+  for (const ne of N.enums) idMap.set(ne.id, enumMatch.get(ne)?.id ?? ne.id);
+  const result: ReconcileResult = { schema: { tables, enums, relationships }, meta, changes, idMap };
+  if (opts.frozen?.size) applyFrozen(prev, result, opts.frozen);
+  return result;
+}
+
+/** Restaura o estado anterior das entidades congeladas (e das relações que saem delas) */
+function applyFrozen(prev: Pick<Project, 'schema' | 'meta'>, r: ReconcileResult, frozen: ReadonlySet<Id>) {
+  const P = prev.schema;
+  const restore = <T extends { id: Id }>(prevList: T[], next: T[]): T[] => {
+    const out = next.filter((x) => !frozen.has(x.id) || !prevList.some((p) => p.id === x.id));
+    prevList.forEach((p, i) => {
+      if (!frozen.has(p.id)) return;
+      // volta para perto da posição anterior: depois do vizinho anterior que ainda existe
+      let at = out.length;
+      for (let j = i - 1; j >= 0; j--) {
+        const k = out.findIndex((x) => x.id === prevList[j].id);
+        if (k >= 0) {
+          at = k + 1;
+          break;
+        }
+        if (j === 0) at = 0;
+      }
+      if (i === 0) at = 0;
+      out.splice(at, 0, p);
+    });
+    return out;
+  };
+  r.schema.tables = restore(P.tables, r.schema.tables);
+  r.schema.enums = restore(P.enums, r.schema.enums);
+  r.schema.relationships = [
+    ...r.schema.relationships.filter((x) => !frozen.has(x.fromTable)),
+    ...P.relationships.filter((x) => frozen.has(x.fromTable)),
+  ];
+  for (const t of P.tables) {
+    if (!frozen.has(t.id)) continue;
+    for (const id of [t.id, ...t.columns.map((c) => c.id)]) {
+      if (prev.meta[id]) r.meta[id] = prev.meta[id];
+      else delete r.meta[id];
+    }
+  }
+  for (const e of P.enums) if (frozen.has(e.id)) {
+    if (prev.meta[e.id]) r.meta[e.id] = prev.meta[e.id];
+    else delete r.meta[e.id];
+  }
 }
 
 function isSchemaId(s: SchemaModel, id: Id) {

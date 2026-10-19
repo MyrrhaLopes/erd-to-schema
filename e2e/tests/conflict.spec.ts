@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { appendEditorText, openLocal, panel, sqlText } from './helpers';
 
-test('edição no canvas enquanto o SQL tem erro: o texto do usuário não é perdido', async ({ page }) => {
+test('edição no canvas enquanto o SQL tem um bloco com erro: as duas mudanças sobrevivem', async ({ page }) => {
   await openLocal(page);
   await appendEditorText(page, '\nCREATE TABLE broken (');
   await expect.poll(async () => (await panel(page, 'sql')).status).toBe('error');
@@ -13,11 +13,14 @@ test('edição no canvas enquanto o SQL tem erro: o texto do usuário não é pe
   await page.keyboard.press('Escape');
   await expect.poll(() => page.evaluate(() => window.__erd.tableNames())).toContain('nova_tabela');
 
+  // o bloco quebrado não impediu o canvas de atualizar o SQL, e o texto do usuário continua lá
+  await expect.poll(() => sqlText(page)).toContain('CREATE TABLE nova_tabela');
+  expect(await sqlText(page)).toContain('CREATE TABLE broken (');
+
   // conserta o SQL: as duas mudanças sobrevivem
   await appendEditorText(page, 'id int);');
-  const apply = page.getByRole('button', { name: 'Aplicar minha versão' });
-  await expect(apply).toBeVisible();
-  await apply.click();
   await expect.poll(() => page.evaluate(() => window.__erd.tableNames())).toContain('broken');
+  expect(await page.evaluate(() => window.__erd.tableNames())).toContain('nova_tabela');
+  await expect.poll(async () => (await panel(page, 'sql')).status).toBe('synced');
   expect(await sqlText(page)).toContain('CREATE TABLE broken');
 });

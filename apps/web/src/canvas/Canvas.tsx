@@ -136,6 +136,16 @@ function CanvasInner() {
   const forceDeselectNodes = useRef(false);
   const wrapper = useRef<HTMLDivElement>(null);
   const uiSelectedNodes = useUi((s) => s.selectedNodes);
+  const selectionRequest = useUi((s) => s.selectionRequest);
+
+  // seleção restaurada junto com um undo/redo
+  useEffect(() => {
+    if (!selectionRequest) return;
+    const ns = new Set(selectionRequest.nodes);
+    const es = new Set(selectionRequest.edges);
+    setNodes((nds) => nds.map((n) => ({ ...n, selected: ns.has(n.id) })));
+    setEdges((eds) => eds.map((e) => ({ ...e, selected: es.has(e.id) })));
+  }, [selectionRequest]);
 
   useEffect(() => {
     const handleMove = (e: PointerEvent) => {

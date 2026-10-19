@@ -169,7 +169,7 @@ export interface Project {
   view: ViewState;
 }
 
-export type Origin = Format | 'canvas' | 'history' | 'load' | 'inspector';
+export type Origin = Format | 'canvas' | 'history' | 'load' | 'inspector' | 'remote';
 
 /* ------------------------------------------------------------------ */
 /* Capability matrix                                                   */
