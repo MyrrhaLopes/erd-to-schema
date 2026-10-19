@@ -67,16 +67,34 @@ export function deriveNodes(project: Project, relationSource: Id | null): Node[]
   return nodes;
 }
 
-function centerX(project: Project, id: Id) {
+function center(project: Project, id: Id): { x: number; y: number } {
   const l = project.layout[id];
-  if (!l) return 0;
-  return l.x + estimateSize(project.schema, id, l).w / 2;
+  if (!l) return { x: 0, y: 0 };
+  const s = estimateSize(project.schema, id, l);
+  return { x: l.x + s.w / 2, y: l.y + s.h / 2 };
 }
 
-/** Lado dos handles: sai pela direita se o destino está à direita */
-function sides(project: Project, a: Id, b: Id): ['L' | 'R', 'L' | 'R'] {
+export type Side = 'L' | 'R' | 'T' | 'B';
+
+/**
+ * Lado do handle que aponta geometricamente para o outro nó: horizontal (L/R) quando a
+ * distância em X domina, vertical (T/B) quando a tabela-alvo está quase na mesma coluna —
+ * só colunas de tabela (relações-nota sem atributo) têm handles de topo/base, por isso
+ * `allowA`/`allowB` desabilitam o vertical nas pontas presas a uma coluna específica.
+ * Como o lado é recalculado a partir da posição atual (nunca persistido), ele já favorece
+ * o não-cruzamento sempre que o botão Organizar — ou um arrasto manual — reposiciona as tabelas.
+ */
+function sides(project: Project, a: Id, b: Id, allowA: boolean, allowB: boolean): [Side, Side] {
   if (a === b) return ['R', 'R'];
-  return centerX(project, a) <= centerX(project, b) ? ['R', 'L'] : ['L', 'R'];
+  const pa = center(project, a);
+  const pb = center(project, b);
+  const dx = pb.x - pa.x;
+  const dy = pb.y - pa.y;
+  const pick = (ddx: number, ddy: number, allowVertical: boolean): Side => {
+    if (allowVertical && Math.abs(ddy) > Math.abs(ddx)) return ddy > 0 ? 'B' : 'T';
+    return ddx >= 0 ? 'R' : 'L';
+  };
+  return [pick(dx, dy, allowA), pick(-dx, -dy, allowB)];
 }
 
 /** Marca do lado "from" (start) de cada cardinalidade */
@@ -143,8 +161,11 @@ export function deriveEdges(project: Project): ErdEdge[] {
     const from = tableById(schema, r.fromTable);
     const to = tableById(schema, r.toTable);
     if (!from || !to) continue;
-    const [sa, sb] = sides(project, r.fromTable, r.toTable);
-    const handle = (tableId: Id, cols: Id[], side: 'L' | 'R') => (cols.length ? `${cols[0]}-${side}` : `${tableId}-h${side}`);
+    // só relações-nota sem coluna específica (ponta "de tabela") podem usar topo/base
+    const allowFrom = r.kind === 'note' && r.fromColumns.length === 0;
+    const allowTo = r.kind === 'note' && r.toColumns.length === 0;
+    const [sa, sb] = sides(project, r.fromTable, r.toTable, allowFrom, allowTo);
+    const handle = (tableId: Id, cols: Id[], side: Side) => (cols.length ? `${cols[0]}-${side}` : `${tableId}-h${side}`);
     const colNames = (t: typeof from, ids: Id[]) => ids.map((c) => columnById(t, c)?.name).join(', ');
 
     const group = pairEdges.get(pairKey(r.fromTable, r.toTable)) ?? [];
@@ -214,7 +235,7 @@ export function deriveEdges(project: Project): ErdEdge[] {
     const ends = pivotEnds(project, t);
     if (!ends || !vis.visible(ends.a) || !vis.visible(ends.b)) continue;
     if (!tableById(schema, ends.a) || !tableById(schema, ends.b)) continue;
-    const [sa, sb] = sides(project, ends.a, ends.b);
+    const [sa, sb] = sides(project, ends.a, ends.b, false, false);
     const group = pairEdges.get(pairKey(ends.a, ends.b)) ?? [];
     const groupIdx = group.findIndex((e) => e.kind === 'nn' && e.t.id === t.id);
     const groupCount = group.length;
@@ -246,7 +267,7 @@ export function deriveEdges(project: Project): ErdEdge[] {
     for (const c of t.columns) {
       const en = enumByName.get(c.type.base);
       if (!en || !vis.visible(en.id)) continue;
-      const [sa, sb] = sides(project, t.id, en.id);
+      const [sa, sb] = sides(project, t.id, en.id, false, false);
       edges.push({
         id: `enum:${c.id}`,
         type: 'erd',

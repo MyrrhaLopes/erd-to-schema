@@ -67,7 +67,7 @@ type Handle = { col?: Id; table: boolean };
 
 function parseHandle(h: string | null | undefined): Handle {
   if (!h) return { table: true };
-  const m = h.match(/^(.*)-(L|R|hL|hR)$/);
+  const m = h.match(/^(.*)-(L|R|hL|hR|hT|hB)$/);
   if (!m) return { table: true };
   if (m[2].startsWith('h')) return { table: true };
   return { col: m[1], table: false };

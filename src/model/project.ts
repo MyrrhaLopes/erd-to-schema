@@ -1,4 +1,4 @@
-import type { Id, LayoutEntry, Project, SchemaModel, ViewState } from './types';
+import type { EnumType, Id, LayoutEntry, Project, SchemaModel, ViewState } from './types';
 import { emptySchema } from './schema';
 
 export const TABLE_WIDTH = 260;
@@ -86,42 +86,100 @@ export function findFreeSpot(project: Pick<Project, 'schema' | 'layout' | 'notes
   return p;
 }
 
-/** Layout em camadas: tabelas "mãe" à esquerda, filhas à direita */
+function range(a: number, b: number): number[] {
+  const out: number[] = [];
+  if (a <= b) for (let i = a; i <= b; i++) out.push(i);
+  else for (let i = a; i >= b; i--) out.push(i);
+  return out;
+}
+
+/** Posição Y média das tabelas cuja coluna referencia este enum — usada só para ordenar a coluna de enums */
+function avgRefY(schema: SchemaModel, layout: Record<Id, LayoutEntry>, e: EnumType): number {
+  const ys: number[] = [];
+  for (const t of schema.tables) for (const c of t.columns) if (c.type.base === e.name) ys.push(layout[t.id]?.y ?? 0);
+  return ys.length ? ys.reduce((s, y) => s + y, 0) / ys.length : Infinity;
+}
+
+/**
+ * Layout em camadas (nível = caminho mais longo via FK, "mãe" à esquerda) com a ordem
+ * dentro de cada camada otimizada por baricentro — a heurística clássica de redução de
+ * cruzamentos do método de Sugiyama: poucas idas-e-voltas entre camadas vizinhas já
+ * aproximam bastante do mínimo de cruzamentos. Relações-nota também entram na ordenação
+ * (não só FKs), para que tabelas ligadas por nota fiquem próximas na mesma camada.
+ * O lado (L/R/T/B) de cada ponta de relação não é guardado aqui: `canvas/derive.ts` o
+ * recalcula a partir da posição final, sempre apontando geometricamente para o outro nó.
+ */
 export function autoLayout(project: Pick<Project, 'schema' | 'layout' | 'notes'>) {
   const { schema, layout } = project;
+  const tableIds = new Set(schema.tables.map((t) => t.id));
+
   const level = new Map<Id, number>();
-  const parents = new Map<Id, Id[]>();
+  const fkParents = new Map<Id, Id[]>();
   for (const r of schema.relationships) {
     if (r.kind !== 'fk' || r.fromTable === r.toTable) continue;
-    parents.set(r.fromTable, [...(parents.get(r.fromTable) ?? []), r.toTable]);
+    fkParents.set(r.fromTable, [...(fkParents.get(r.fromTable) ?? []), r.toTable]);
   }
-  const visit = (id: Id, stack: Set<Id>): number => {
+  const visitLevel = (id: Id, stack: Set<Id>): number => {
     if (level.has(id)) return level.get(id)!;
     if (stack.has(id)) return 0;
     stack.add(id);
-    const ps = parents.get(id) ?? [];
-    const l = ps.length ? Math.max(...ps.map((p) => visit(p, stack) + 1)) : 0;
+    const ps = fkParents.get(id) ?? [];
+    const l = ps.length ? Math.max(...ps.map((p) => visitLevel(p, stack) + 1)) : 0;
     stack.delete(id);
     level.set(id, l);
     return l;
   };
-  schema.tables.forEach((t) => visit(t.id, new Set()));
-  const columns = new Map<number, Id[]>();
+  schema.tables.forEach((t) => visitLevel(t.id, new Set()));
+
+  // vizinhos não-direcionais (FK + nota) só para ordenar dentro da camada, nunca para o nível
+  const neighbors = new Map<Id, Id[]>();
+  for (const r of schema.relationships) {
+    if (r.fromTable === r.toTable || !tableIds.has(r.fromTable) || !tableIds.has(r.toTable)) continue;
+    neighbors.set(r.fromTable, [...(neighbors.get(r.fromTable) ?? []), r.toTable]);
+    neighbors.set(r.toTable, [...(neighbors.get(r.toTable) ?? []), r.fromTable]);
+  }
+
+  const order = new Map<number, Id[]>();
   for (const t of schema.tables) {
     const l = level.get(t.id) ?? 0;
-    columns.set(l, [...(columns.get(l) ?? []), t.id]);
+    order.set(l, [...(order.get(l) ?? []), t.id]);
   }
-  const maxLevel = Math.max(0, ...columns.keys());
-  for (const [l, ids] of columns) {
+  const maxLevel = Math.max(0, ...order.keys());
+
+  const posInLevel = new Map<Id, number>();
+  const rebuildPos = () => {
+    for (const ids of order.values()) ids.forEach((id, i) => posInLevel.set(id, i));
+  };
+  rebuildPos();
+
+  const SWEEPS = 6;
+  for (let iter = 0; iter < SWEEPS; iter++) {
+    const forward = iter % 2 === 0;
+    for (const lvl of forward ? range(0, maxLevel) : range(maxLevel, 0)) {
+      const refLevel = forward ? lvl - 1 : lvl + 1;
+      const ids = order.get(lvl);
+      if (refLevel < 0 || refLevel > maxLevel || !ids || ids.length < 2) continue;
+      const bary = new Map<Id, number>();
+      for (const id of ids) {
+        const refs = (neighbors.get(id) ?? []).filter((n) => level.get(n) === refLevel);
+        bary.set(id, refs.length ? refs.reduce((s, n) => s + (posInLevel.get(n) ?? 0), 0) / refs.length : posInLevel.get(id)!);
+      }
+      ids.sort((a, b) => bary.get(a)! - bary.get(b)!);
+      rebuildPos();
+    }
+  }
+
+  for (const [l, ids] of order) {
     let y = 0;
     for (const id of ids) {
       layout[id] = { ...layout[id], x: l * (TABLE_WIDTH + 140), y };
       y += estimateSize(schema, id).h + 50;
     }
   }
+
   let y = 0;
   const ex = (maxLevel + 1) * (TABLE_WIDTH + 140);
-  for (const e of schema.enums) {
+  for (const e of [...schema.enums].sort((a, b) => avgRefY(schema, layout, a) - avgRefY(schema, layout, b))) {
     layout[e.id] = { ...layout[e.id], x: ex, y };
     y += estimateSize(schema, e.id).h + 40;
   }

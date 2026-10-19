@@ -136,6 +136,8 @@ function TableNodeImpl({ id, data, selected }: NodeProps<TableFlowNode>) {
         revealTableInCode(table.id);
       }}
     >
+      {/* fora do cabeçalho (que tem `relative`) para ancorar no topo/base do card inteiro, não só do cabeçalho */}
+      <Handle type="source" id={`${id}-hT`} position={Position.Top} className="erd-handle erd-handle-head" title="Relação-nota (topo)" />
       {selected && (
         <NodeResizeControl
           minWidth={180}
@@ -194,6 +196,7 @@ function TableNodeImpl({ id, data, selected }: NodeProps<TableFlowNode>) {
           <Plus size={12} /> coluna
         </button>
       )}
+      <Handle type="source" id={`${id}-hB`} position={Position.Bottom} className="erd-handle erd-handle-head" title="Relação-nota (base)" />
     </div>
   );
 }

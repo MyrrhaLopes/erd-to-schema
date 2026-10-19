@@ -1,5 +1,5 @@
-import { memo } from 'react';
-import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, type Edge, type EdgeProps } from '@xyflow/react';
+import { memo, type CSSProperties } from 'react';
+import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, Position, type Edge, type EdgeProps } from '@xyflow/react';
 
 /** Extremidades de cardinalidade (notação pé-de-galinha) */
 export type EndMark = 'one' | 'zero-one' | 'many' | 'zero-many' | 'one-many' | 'none';
@@ -111,6 +111,18 @@ export function ErdMarkers() {
       </defs>
     </svg>
   );
+}
+
+/** Posição do rótulo "look-across": ao lado do ponto quando o handle é L/R, acima/abaixo quando é T/B (relação-nota saindo do topo/base da tabela) */
+function cardLabelStyle(x: number, y: number, position: Position, labelOffset?: number): CSSProperties {
+  const sign = labelOffset ? (labelOffset > 0 ? 1 : -1) : 0;
+  if (position === Position.Top || position === Position.Bottom) {
+    const dy = position === Position.Top ? -18 : 18;
+    const anchorY = position === Position.Top ? '-100%' : '0%';
+    return { transform: `translate(-50%, ${anchorY}) translate(${x + sign * 14}px, ${y + dy}px)` };
+  }
+  const dx = position === Position.Left ? -18 : 18;
+  return { transform: `translate(-50%, -100%) translate(${x + dx}px, ${y - 5 + sign * 14}px)` };
 }
 
 function ErdEdgeImpl({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, selected, source, target }: EdgeProps<ErdEdge>) {
@@ -229,11 +241,7 @@ function ErdEdgeImpl({ id, sourceX, sourceY, targetX, targetY, sourcePosition, t
         <EdgeLabelRenderer>
           <div
             className="nodrag nopan pointer-events-none absolute rounded border border-purple-200 bg-purple-100/95 px-1 py-0.2 text-[9px] font-bold text-purple-800 shadow-xs"
-            style={{
-              transform: `translate(-50%, -100%) translate(${targetX + (targetPosition === 'left' ? -18 : 18)}px, ${
-                targetY - 5 + (data?.labelOffset ? (data.labelOffset > 0 ? 14 : -14) : 0)
-              }px)`,
-            }}
+            style={cardLabelStyle(targetX, targetY, targetPosition, data?.labelOffset)}
             title={`Cardinalidade (A → B): ${data.cardinality}`}
           >
             {data.cardinality}
@@ -244,11 +252,7 @@ function ErdEdgeImpl({ id, sourceX, sourceY, targetX, targetY, sourcePosition, t
         <EdgeLabelRenderer>
           <div
             className="nodrag nopan pointer-events-none absolute rounded border border-purple-200 bg-purple-100/95 px-1 py-0.2 text-[9px] font-bold text-purple-800 shadow-xs"
-            style={{
-              transform: `translate(-50%, -100%) translate(${sourceX + (sourcePosition === 'left' ? -18 : 18)}px, ${
-                sourceY - 5 + (data?.labelOffset ? (data.labelOffset > 0 ? 14 : -14) : 0)
-              }px)`,
-            }}
+            style={cardLabelStyle(sourceX, sourceY, sourcePosition, data?.labelOffset)}
             title={`Cardinalidade reversa (B → A): ${data.reverseCardinality}`}
           >
             {data.reverseCardinality}
