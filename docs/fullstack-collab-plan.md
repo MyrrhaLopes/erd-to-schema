@@ -8,6 +8,7 @@
 2. Um **projeto** contém o diagrama ER e, no futuro, um **segundo canvas de fluxos de usuário** (só planejar agora).
 3. **Compartilhamento** com outros usuários, com permissão de **edição** ou **somente visualização**. Quem só visualiza pode **pedir acesso de edição**.
 4. **Colaboração em tempo real** no canvas, estilo Google Docs: as edições de cada pessoa ficam visíveis, com **uma cor de destaque por usuário** nos blocos que ela está mexendo e nas mudanças que fez.
+5. **Painéis de código (SQL/Prisma/Drizzle) também com digitação compartilhada** estilo Docs: várias pessoas no mesmo texto, com cursores coloridos (pedido na revisão do plano).
 
 ## Decisões principais (TL;DR)
 
@@ -15,10 +16,12 @@
 |---|---|---|
 | Monorepo | **pnpm workspaces + Turborepo** | Cache de build/test por pacote; pnpm resolve bem os pacotes internos `workspace:*`. |
 | Modelo de colaboração | **CRDT com Yjs** | Merge automático sem servidor de transformação (OT); funciona offline e reconecta sozinho; ecossistema maduro (awareness, undo, bindings de CodeMirror). |
-| Servidor de tempo real | **Hocuspocus** (servidor Yjs) | Já traz autenticação por documento, conexões *read-only*, persistência plugável, extensão Redis para escalar horizontalmente. |
-| API | **Hono** (Node) + **zod** | Leve, tipada ponta a ponta com o cliente RPC do próprio Hono, sem codegen. |
+| Servidor de tempo real | **Hocuspocus** (servidor Yjs open source, do time do Tiptap) | Já traz autenticação por documento, conexões *read-only*, persistência plugável e extensão Redis para escalar horizontalmente. Ver §6.0. |
+| Painéis de código | **Texto compartilhado** (`Y.Text` por formato) + **sync bot no servidor** | Edição simultânea estilo Docs no SQL/Prisma/Drizzle, com cursores coloridos. Um único escritor (o bot) traduz texto ⇄ modelo, então não há duplicação. Ver §4.6. |
+| API | **Hono** (Node) + **zod** | Parecido com o Express, mas TypeScript-first: o cliente RPC tipado elimina a duplicação de tipos entre a API e a web. Express 5 também serve. Ver §7.0. |
 | Banco | **Postgres + Drizzle ORM** | O app já gera Drizzle; usar o mesmo ORM no backend faz *dogfooding* e permite validar o próprio gerador. |
-| Auth | **Better Auth** (adaptador Drizzle) | Self-hosted, e-mail/senha + OAuth (GitHub/Google), sessões em cookie, sem dependência de SaaS. |
+| Auth | **Better Auth** (adaptador Drizzle) | Biblioteca, não serviço: as tabelas ficam no seu Postgres, no seu schema Drizzle. Evita reimplementar hash de senha, sessões, reset, verificação de e-mail e OAuth. Ver §7.0. |
+| E-mail | **Resend** + **React Email**; **Mailpit** em dev | API simples, templates em JSX, plano gratuito suficiente para começar. Alternativas: Postmark, Amazon SES. Ver §7.2. |
 | Front | O app atual vira `apps/web`; entra **TanStack Router** + **TanStack Query** | Rotas tipadas (dashboard, projeto, canvas) e cache das chamadas REST. |
 | Fonte da verdade no cliente | **Y.Doc** (zustand vira projeção somente-leitura) | Toda a lógica de ações atual (`actions.ts`, Inspector, reconcile) continua escrevendo via `commit()`; só o que está por baixo do `commit` muda. |
 | Undo/redo | **`Y.UndoManager`** com `trackedOrigins` locais | Desfaz só as *suas* mudanças, como no Google Docs. O `zundo` sai. |
@@ -31,12 +34,14 @@ flowchart LR
     YD --> Proj[projeção zustand]
     Proj --> UI
     YD <--> IDB[(y-indexeddb offline)]
-    Panels[Painéis SQL/Prisma/Drizzle] -->|parse + reconcile + diff| Bind
-    Workers[[Workers: libpg-query, prisma-ast, drizzle sandbox]] --- Panels
+    Panels[Painéis SQL/Prisma/Drizzle<br/>y-codemirror sobre Y.Text] <--> YD
+    Workers[[Workers: lint local, só leitura]] --- Panels
   end
   YD <-->|WebSocket: updates + awareness| HP[apps/collab Hocuspocus]
+  HP --- Bot[[sync bot: texto ⇄ modelo<br/>parse, reconcile, patch]]
   UI -->|HTTPS REST| API[apps/api Hono]
   API --> PG[(Postgres)]
+  API --> Mail[Resend]
   HP -->|onAuthenticate: token| API
   HP -->|load/store updates| PG
   API -. eventos de permissão .-> HP
@@ -51,16 +56,19 @@ erd-to-schema/
 ├─ apps/
 │  ├─ web/            # o app atual (Vite + React), agora com rotas, auth e colaboração
 │  ├─ api/            # Hono: auth, projetos, membros, convites, pedidos de acesso, exports
-│  └─ collab/         # Hocuspocus: WebSocket Yjs, auth por documento, persistência
+│  └─ collab/         # Hocuspocus: WebSocket Yjs, auth por documento, persistência, hospeda o sync bot
 ├─ packages/
 │  ├─ model/          # hoje em src/model + src/formats: tipos canônicos, reconcile, geradores e parsers SQL/Prisma
 │  ├─ crdt/           # schema do Y.Doc, Project ⇄ Y.Doc, diff→ops, projeção, validação defensiva
+│  ├─ sync/           # sync bot isomórfico: Y.Text ⇄ modelo (parse por bloco, reconcile, patch de texto)
+│  ├─ sandbox/        # execução isolada do Drizzle (isolate V8 no servidor, worker no browser)
+│  ├─ emails/         # templates React Email (convite, pedido de acesso, aprovação, reset de senha)
 │  ├─ canvas-kinds/   # contrato comum de "tipo de canvas" (erd, flow) — ver §8
 │  ├─ db/             # schema Drizzle do backend, migrações (drizzle-kit), cliente
 │  ├─ contracts/      # schemas zod compartilhados entre api e web (DTOs, papéis, eventos)
 │  └─ config/         # tsconfig base, eslint, prettier, vitest preset
 ├─ e2e/               # Playwright: cenários multi-usuário (dois contextos de browser)
-├─ docker-compose.yml # postgres (+ redis opcional) para dev
+├─ docker-compose.yml # postgres, mailpit (+ redis opcional) para dev
 ├─ turbo.json
 └─ pnpm-workspace.yaml
 ```
@@ -68,9 +76,9 @@ erd-to-schema/
 Fronteiras importantes:
 
 - **`packages/model` é isomórfico** (roda no browser e no Node). O backend usa para gerar `schema.sql`/`schema.prisma` em exports e snapshots. O parser SQL (`libpg-query`) tem build WASM que roda nos dois lados.
-- **O parse de Drizzle continua só no browser.** Ele *executa* o código do usuário (sucrase + `drizzle-orm` num worker com timeout). Executar código de usuário no servidor é uma superfície de ataque que não vale o ganho; o servidor nunca roda Drizzle de entrada.
-- **`packages/crdt` não depende de React** — dá para testar convergência em Node com fast-check (já usado em `tests/roundtrip.property.test.ts`).
-- Os workers (`parser.worker.ts`, `drizzle.worker.ts`) ficam em `apps/web`, importando os parsers de `@erd/model`.
+- **O servidor passa a executar o Drizzle**, porque é o sync bot (§4.6) que traduz o texto compartilhado em modelo. O parse de Drizzle *executa* o código do usuário (sucrase + `drizzle-orm`), então no servidor ele roda num **isolate V8 sem nenhuma API do Node** (`isolated-vm`), com limite de memória (~64 MB) e de tempo (1,5 s, como hoje), dentro de um `worker_thread` separado: se travar, o collab não cai. Plano B, se o `isolated-vm` der problema de manutenção: um pool de processos filhos com o *permission model* do Node (`--permission`, sem fs, rede nem `child_process`). Detalhes em `packages/sandbox`.
+- **`packages/crdt` e `packages/sync` não dependem de React.** Dá para testar convergência e o sync bot em Node com fast-check (já usado em `tests/roundtrip.property.test.ts`).
+- Os workers do browser (`parser.worker.ts`, `drizzle.worker.ts`) ficam em `apps/web` e passam a servir para duas coisas: **lint local instantâneo** (erros aparecem enquanto você digita, sem esperar o servidor, mas sem escrever nada no documento) e o **sync bot do modo local** (§10).
 
 ---
 
@@ -173,6 +181,8 @@ Y.Doc
 ├─ layout: Y.Map<EntityId, Y.Map{ x, y, w?, h?, collapsed? }>
 ├─ entityMeta: Y.Map<EntityId, Y.Map{ tags (JSON), suppressedTags (JSON), provenance, formatNames }>
 ├─ notes: Y.Map<NoteId, Y.Map{ title, content: Y.Text, color?, order, _by, _at }>
+├─ code: Y.Map<Format, Y.Text>        # texto compartilhado de cada painel (sql, prisma, drizzle) — §4.6
+├─ sync: Y.Map<Format, JSON>          # escrito SÓ pelo sync bot: status, diagnósticos (com autor), modelRev
 └─ clients: Y.Map<clientID, userId>   # mapeia o clientID do Yjs para o usuário (autoria)
 ```
 
@@ -201,7 +211,7 @@ Estratégia:
 
 ### 4.3 Como o código atual passa a escrever no Y.Doc (sem reescrever as ações)
 
-O ponto de entrada de toda escrita hoje é `useProjectStore.getState().commit(recipe, origin, changes)`, usado por `actions.ts`, pelo Inspector, pelo `apply()` do sync engine e pelo `loadProject`. O plano é **manter essa assinatura** e trocar a implementação:
+O ponto de entrada de toda escrita hoje é `useProjectStore.getState().commit(recipe, origin, changes)`, usado por `actions.ts`, pelo Inspector, pelo `apply()` do sync engine e pelo `loadProject`. O plano é **manter essa assinatura** e trocar a implementação. (O `apply()` do sync engine sai do cliente e vai para o sync bot, §4.6, que usa o mesmo `applyDiff`.)
 
 ```ts
 commit(recipe, origin, changes) {
@@ -219,11 +229,13 @@ commit(recipe, origin, changes) {
 
 **Projeção (Y.Doc → zustand):** `ydoc.on('afterTransaction')` reconstrói só as entidades tocadas (`transaction.changed`) e preserva a referência das outras. Assim o React Flow só re-renderiza os nós que mudaram. Os seletores atuais (`s.doc.schema`, `s.doc.layout`...) continuam funcionando.
 
-**Origem das mudanças:** `lastOrigin` (usado pelo sync engine para não regenerar o painel que originou a edição) passa a sair de `transaction.origin`. Updates remotos chegam com a origem do provider e são tratados como `'remote'`.
+**Origem das mudanças:** `lastOrigin` passa a sair de `transaction.origin`. Updates remotos chegam com a origem do provider e são tratados como `'remote'`; os escritos pelo sync bot, como `'sync-bot'`.
 
 ### 4.4 Undo/redo
 
-- `Y.UndoManager` sobre todos os tipos de primeiro nível, com `trackedOrigins = new Set([LOCAL_ORIGIN])`. Ctrl+Z desfaz só as suas mudanças, nunca as do colega.
+- `Y.UndoManager` sobre os tipos do modelo, com `trackedOrigins = new Set([LOCAL_ORIGIN])`. Ctrl+Z desfaz só as suas mudanças, nunca as do colega.
+- Dentro de um painel de código, vale o undo do próprio editor (o `y-codemirror.next` tem um `UndoManager` por `Y.Text`). Ele desfaz a *sua digitação*, e o sync bot reaplica o resultado no modelo. É a mesma divisão de hoje (o editor tem histórico local; o canvas, o global).
+- As escritas do sync bot nunca entram no undo de ninguém. Se você desfaz uma edição no canvas, o bot atualiza os textos de novo; se desfaz uma digitação no SQL, o bot atualiza o modelo.
 - `batch()` (hoje usado pela borracha) vira `undoManager.stopCapturing()` antes e depois do bloco. Os `captureTimeout` agrupam digitação.
 - Os metadados de seleção (`stack-item-added`/`popped`) restauram a seleção e o viewport junto com o undo.
 - O `zundo` e o `temporal` saem do store.
@@ -237,17 +249,55 @@ Mover uma tabela gera dezenas de eventos por segundo. Gravar cada um no Y.Doc in
 - **No `onNodeDragStop`** (que já existe em `Canvas.tsx`): um único `commit` grava a posição final. Uma entrada de undo, um update persistido.
 - Para redimensionar nota ou tabela, a mesma regra.
 
-### 4.6 Painéis de código (SQL / Prisma / Drizzle) em modo colaborativo
+### 4.6 Painéis de código com edição compartilhada (estilo Docs)
 
-Hoje o sync engine marca `conflict: true` quando o modelo muda enquanto um painel tem edição pendente, e mostra um banner. Com várias pessoas editando, isso dispararia o tempo todo. A proposta é um **merge de três vias** no nível do modelo:
+Objetivo: duas ou mais pessoas digitam no mesmo SQL (ou Prisma, ou Drizzle) ao mesmo tempo, cada uma vendo o cursor e a seleção das outras com nome e cor. Canvas e outros painéis acompanham.
 
-1. Quando o usuário começa a digitar num painel, o painel guarda `base` (o `Project` projetado naquele momento), além do `baseRev` que já existe.
-2. No parse (debounce de 400 ms ou Ctrl+S): `reconciled = reconcile(base, parsed, format)`, como hoje, mas **contra a base e não contra o modelo atual**.
-3. `applyDiff(ydoc, base, reconciled)`: o diff entre a base e o que o usuário escreveu é aplicado **sobre o Y.Doc atual**. Como as operações são por campo e por ID, as edições do usuário se misturam com as remotas, e só o mesmo campo editado dos dois lados entra em *last-writer-wins*.
-4. Depois de aplicar, o painel é regenerado a partir do modelo mesclado. Para não "pular o texto" debaixo do cursor, o painel só é regenerado se o usuário não digitou nada desde o parse (a regra atual do `seq`). Se a regeneração muda trechos que o usuário não editou, ela vira uma transação do CodeMirror que mapeia a posição do cursor.
-5. O banner de conflito só aparece num caso real: a base referencia uma entidade que alguém apagou nesse meio tempo (por exemplo, o usuário editou colunas de uma tabela que outra pessoa excluiu). As opções continuam "aplicar a minha versão" (recria a tabela) ou "recarregar do modelo".
+Cada formato tem um `Y.Text` compartilhado (`code.sql`, `code.prisma`, `code.drizzle`), ligado ao CodeMirror pelo `y-codemirror.next`. A digitação em si é o caso fácil: o Yjs mescla caractere a caractere, como nas notas. O difícil é manter quatro vistas (canvas e três textos) coerentes.
 
-O **texto do painel não é compartilhado** (não é um `Y.Text`). Ele é uma vista derivada, e o merge acontece no modelo. Se duas pessoas digitarem SQL ao mesmo tempo, cada uma tem seu rascunho, e os dois convergem pelo modelo. Isso evita o problema de dois rascunhos de texto se mesclarem em SQL inválido. A presença aparece nos painéis mesmo assim (§5.4).
+**O problema.** Se cada cliente traduzisse texto → modelo e modelo → texto, todos fariam a mesma tradução ao mesmo tempo. A tabela escrita no SQL nasceria N vezes no modelo, uma por cliente, com IDs aleatórios diferentes. O bloco `model Orders { … }` seria inserido N vezes no Prisma. Editar texto não é idempotente.
+
+**A regra: um único tradutor por documento, o _sync bot_.** Ele roda no servidor de colaboração, ao lado do Y.Doc (§6), e é o único participante sempre presente, com permissão de escrita e processamento serial por documento. Os clientes só escrevem **o que o usuário fez**: digitação nos `Y.Text` e edições do canvas e do Inspector no modelo. Tudo o que é **derivado** (o modelo a partir do texto, o texto a partir do modelo, status e diagnósticos em `sync`) é escrito só pelo bot, com origem `sync-bot`. Ele usa o código que já existe: parsers, `reconcile`, geradores e `applyDiff`. No modo local (§10), o mesmo `@erd/sync` roda no browser, onde só há um escritor.
+
+#### Fluxo 1: texto → modelo
+
+1. Alguém digita no painel SQL e todos veem a digitação ao vivo. No cliente, o worker local faz o **lint instantâneo**: mostra os erros sem escrever no documento.
+2. O bot espera 400 ms depois da última mudança em `code.sql`. Com Ctrl+S, o cliente manda uma *stateless message* `flush` e o bot processa na hora.
+3. **Parse por bloco.** O texto é dividido em blocos de topo: *statements* no SQL, blocos `model`/`enum` no Prisma. Um bloco que não parseia fica **congelado**: as entidades que vieram dele no último parse bem-sucedido mantêm o estado anterior no modelo, em vez de serem apagadas. O bot sabe quais são porque guarda o intervalo de cada bloco com posições relativas do Yjs, que acompanham as edições.
+   É isso que torna a digitação simultânea viável: o `CREATE TABLE` pela metade da Ana não impede que a tabela que o Bruno terminou de escrever, três statements abaixo, entre no modelo.
+   Mudança necessária no `reconcile`: aceitar um conjunto de entidades "não tocar", além do que ele já faz hoje.
+4. Na mesma transação, o bot faz `reconcile(modeloAtual, parsed, formato, { congeladas })` seguido de `applyDiff` no modelo; atualiza `sync.sql` (status e diagnósticos, cada um com o autor da linha); e aplica os patches nos outros dois textos (Fluxo 2). O `_by` das entidades alteradas é o autor das linhas que mudaram, descoberto pelo `clientID` dos itens do `Y.Text` e pelo mapa `clients`.
+5. **O texto de origem não é reformatado.** O que a pessoa escreveu fica como ela escreveu, incluindo comentários livres. Hoje eles se perdem na próxima regeneração; com o texto compartilhado, sobrevivem.
+6. Se o texto mudar durante o parse (o parse é assíncrono), o resultado é descartado e o bot roda de novo. É a regra do `seq` que já existe no `sync/engine.ts`.
+
+#### Fluxo 2: modelo → texto
+
+1. Dispara quando o modelo muda por uma via que não é o texto daquele formato: canvas, Inspector, outro painel, undo, restauração de versão.
+2. Para cada formato, o bot gera o texto canônico de antes e de depois (`gerar(modeloAnterior)` e `gerar(modeloNovo)`) e calcula o diff entre os dois com o `diff-match-patch` (primeiro por linha, depois por caractere).
+3. Esse diff é aplicado como **patch** sobre o `Y.Text` atual, que pode estar diferente do canônico (formatação própria, comentários, blocos em edição). Cada trecho é localizado pelo contexto, com *fuzzy match*, como no `git apply`.
+   Exemplo: a Ana renomeia `orders` no canvas enquanto o Bruno digita uma coluna nova em `customers` no SQL. A linha `CREATE TABLE orders` muda no texto do Bruno, o que ele está digitando fica intacto, e o cursor dele não pula, porque o `y-codemirror.next` ancora os cursores em posições relativas.
+4. **Se um trecho do patch não encaixa** (alguém está reescrevendo justamente aquela região), o bot não força. Ele marca o bloco como **divergente** em `sync.<formato>`, por exemplo: "este bloco difere do diagrama: `orders.total` mudou no canvas enquanto o texto estava em edição". Enquanto o bloco estiver divergente, as entidades dele ficam congeladas no Fluxo 1, para que o texto antigo não desfaça a mudança do canvas sem ninguém perceber. O painel mostra duas ações nesse bloco: **"Usar o texto"** (o texto vence no próximo parse) e **"Usar o diagrama"** (o bot regenera só aquele bloco).
+5. **Formatar** (botão e Shift+Alt+F): regenera o texto inteiro no formato canônico, como uma edição normal, com autoria e undo. Não é automático, porque apagaria a formatação e os comentários livres de todo mundo. As diretivas `@erd:` sobrevivem; os comentários comuns, não, e o botão avisa.
+
+#### Drizzle: limitação conhecida
+
+O Drizzle é *executado*, e não parseado. O código pode usar helpers, spreads e loops que atravessam o arquivo inteiro, então não dá para isolar por bloco. Se houver erro em qualquer lugar do texto Drizzle, o modelo não é atualizado a partir desse painel até o erro ser corrigido. O erro aparece na linha certa, na cor de quem a editou. Os patches do Fluxo 2 continuam funcionando normalmente.
+Melhoria possível para depois: uma transformação do sucrase que envolva cada `export const` num `try/catch` e aproveite os blocos que executaram.
+
+#### Por que não deixar um cliente "líder" fazer a tradução
+
+Essa alternativa foi considerada e rejeitada:
+
+- A awareness é eventualmente consistente, então há janelas em que dois clientes se acham líderes, e aí o texto sai duplicado.
+- O líder pode fechar a aba no meio de uma tradução.
+- Se só houver viewers conectados, ninguém tem permissão para escrever.
+
+O custo da escolha pelo servidor é executar o Drizzle no servidor, em sandbox (§1).
+
+#### Latência e modo offline
+
+- **Latência:** o parse no servidor leva poucos ms (WASM) a algumas dezenas de ms (isolate do Drizzle). O tempo da digitação até o canvas atualizar continua dominado pelo debounce de 400 ms, como hoje.
+- **Offline:** a digitação continua no `Y.Text` local e o lint local segue funcionando. O modelo só se atualiza a partir do texto quando a conexão volta. O canvas continua editável offline, e os textos recebem os patches ao reconectar. O indicador de conexão avisa: "Offline: os painéis de código sincronizam com o diagrama ao reconectar".
 
 ---
 
@@ -285,6 +335,7 @@ Cada cliente publica:
 | Arraste remoto | O nó se move ao vivo com a borda na cor de quem arrasta (via awareness, §4.5). |
 | Arestas | Uma aresta selecionada por alguém ganha o traço na cor dele. |
 | Notas (Markdown) | `y-codemirror.next` sobre o `Y.Text`: **cursor e seleção remotos** com rótulo e cor, igual ao Google Docs. |
+| Painéis SQL/Prisma/Drizzle | O mesmo do Google Docs nas notas: cursor, seleção e nome de cada pessoa digitando, na cor dela (§5.4). |
 | Header | Pilha de avatares de quem está online. Clicar num avatar **segue** a pessoa (viewport sincronizado) ou só centraliza nela. |
 | Minimap | Pontinhos na cor de cada usuário na posição do viewport dele. |
 
@@ -292,25 +343,49 @@ Os componentes de presença ficam numa camada própria (`apps/web/src/collab/pre
 
 ### 5.4 Presença nos painéis de código
 
-Os geradores (`generateSql` etc.) passam a emitir também um **source map** simples: `entityId → intervalo de linhas`. Com ele:
+Os painéis são texto compartilhado (§4.6), então ganham o pacote completo do Google Docs:
 
-- Uma faixa na **gutter** com a cor de quem está selecionando ou editando aquela tabela no canvas.
-- Se alguém está editando o painel SQL na tabela X, os outros veem a marca na mesma tabela nos painéis deles, inclusive em Prisma ou Drizzle.
-
-Esse source map também ajuda fora da colaboração: clicar numa tabela no canvas pode rolar o painel até ela.
+- **Cursores e seleções remotos** com o nome flutuando na cor da pessoa (`yRemoteSelections` do `y-codemirror.next`, alimentado pela awareness). Vale também para quem está em outra aba de formato: o seletor de abas mostra bolinhas coloridas de quem está em SQL, Prisma ou Drizzle.
+- **Rastro de digitação:** o texto inserido por outra pessoa fica com fundo na cor dela por alguns segundos e depois desbota (decoração do CodeMirror alimentada pelos *deltas* remotos do `Y.Text`).
+- **Erros com dono:** os diagnósticos que o bot escreve em `sync.<formato>` carregam o autor da linha. O sublinhado de erro de um bloco que a Ana está escrevendo aparece para todos como "em edição por Ana", em vez de parecer que o arquivo está quebrado.
+- **Ponte com o canvas:** os geradores passam a emitir um **source map** simples (`entityId → intervalo de linhas`), e o parse por bloco devolve o mesmo mapa a partir do texto real. Com ele:
+  - a **gutter** mostra uma faixa na cor de quem está selecionando aquela tabela no canvas;
+  - uma tabela fica com o anel da cor de quem está com o cursor dentro do `CREATE TABLE` dela;
+  - clicar numa tabela no canvas rola o painel até ela, e vice-versa.
 
 ### 5.5 Autoria das edições ("quem mudou o quê")
 
 Duas camadas:
 
 1. **Rastro recente (efêmero):** quando chega um update remoto, as entidades tocadas (`transaction.changed`, mapeadas pelo `clients` → usuário) ganham por ~8 s um **realce na cor do autor**, que vai desbotando. Uma coluna nova "acende" na cor de quem criou. É o equivalente ao destaque das edições alheias no Google Docs.
-2. **Autoria persistente:** cada entidade guarda `_by` (userId) e `_at` (timestamp), gravados na mesma transação da edição. Um botão **"Mostrar autoria"** pinta a borda de cada tabela, coluna e nota com a cor de quem a editou por último, e mostra um tooltip "editado por Fulana há 3 min". Dentro das notas, a autoria por trecho de texto usa `Y.PermanentUserData` junto com snapshots do Yjs.
+2. **Autoria persistente:** cada entidade guarda `_by` (userId) e `_at` (timestamp), gravados na mesma transação da edição. Quando a edição veio do texto, o bot grava como autor quem escreveu as linhas (§4.6). Um botão **"Mostrar autoria"** pinta a borda de cada tabela, coluna e nota com a cor de quem a editou por último, e mostra um tooltip "editado por Fulana há 3 min". Nas notas e nos painéis de código, o mesmo botão pinta **cada trecho de texto** na cor de quem o escreveu. Cada item de um `Y.Text` carrega o `clientID` do autor, e o mapa `clients` o traduz para o usuário; o `Y.PermanentUserData` cobre o histórico entre sessões.
 
 Mais tarde, com `canvas_versions` (§6.3), dá para ter um modo **"o que mudou desde a versão X"**: tabelas e colunas adicionadas, removidas ou alteradas, coloridas por autor. Esse modo reusa a lógica de mudanças do `reconcile` que hoje alimenta o toast.
 
 ---
 
 ## 6. Servidor de colaboração (`apps/collab`)
+
+### 6.0 O que é o Hocuspocus e por que usar
+
+O **Yjs** é a biblioteca de CRDT: sabe mesclar edições, mas não sabe nada de rede. Ela define um protocolo de sincronização (troca de *state vectors* e updates binários) e de *awareness* (presença), e alguém precisa transportar isso. O **Hocuspocus** é um servidor WebSocket para Yjs, open source (MIT), mantido pelo time do Tiptap. É ele que dá vida ao "estilo Google Docs" no backend.
+
+O que ele resolve, que de outro jeito seria escrito à mão:
+
+- **Salas por documento:** cada `canvas:<id>` é uma sala. Ele mantém o `Y.Doc` em memória enquanto há alguém conectado, repassa updates e awareness para os outros da sala e descarrega o documento quando todos saem.
+- **Hooks no ciclo de vida:** `onAuthenticate` (validar o token e definir read-only), `onLoadDocument` e `onStoreDocument` (persistência no nosso Postgres), `onChange`, `onDisconnect`. Na prática, a integração com o resto do sistema é escrever esses hooks.
+- **Conexões read-only** prontas para os viewers.
+- **Multiplexação:** um WebSocket por aba, mesmo com vários documentos abertos (ERD e fluxos).
+- **Reconexão e sincronização incremental:** ao voltar do offline, o cliente manda só o que falta.
+- **Escala horizontal** com a extensão Redis.
+- **Stateless messages** para avisos fora do documento (mudança de permissão, `flush` do Ctrl+S).
+- No cliente, o `HocuspocusProvider` liga o `Y.Doc` ao servidor.
+
+Alternativas consideradas:
+
+- **`y-websocket`:** o servidor de referência do Yjs. Mínimo demais: autenticação, persistência e read-only teriam que ser escritos à mão.
+- **Liveblocks, PartyKit/Cloudflare, Y-Sweet:** gerenciados ou semi-gerenciados. Menos código, mas são pagos, prendem a um fornecedor e deixam o documento fora do seu banco.
+- **Socket.io + OT próprio:** é reimplementar o Google Docs do zero. Não.
 
 ### 6.1 Ciclo de vida
 
@@ -319,6 +394,7 @@ Mais tarde, com `canvas_versions` (§6.3), dá para ter um modo **"o que mudou d
 - **`onStoreDocument`** (com debounce de ~2 s e `maxDebounce` de ~10 s): faz append do update incremental em `canvas_updates`. A cada N updates ou T minutos, **compacta**: grava o `Y.encodeStateAsUpdate` em `canvas_state`, apaga os updates antigos, recalcula o `json_snapshot` (projeção via `@erd/crdt`) e atualiza `projects.updated_at`.
 - **`onChange`:** valida o tamanho do update (por exemplo, rejeita acima de 1 MB) e aplica limite de taxa por conexão.
 - **Garbage collection** do Yjs ligada (`gc: true`). As versões nomeadas guardam snapshots completos, então o histórico fino não é necessário.
+- **Sync bot** (§4.6): uma extensão do Hocuspocus que observa cada documento carregado. Mantém uma **fila serial por documento**, roda os parsers SQL e Prisma no próprio processo e manda o Drizzle para um pool de `worker_threads` com o sandbox. Como só escreve com origem `sync-bot`, ignora as próprias transações e não entra em loop. Métricas: tempo de parse por formato, timeouts do sandbox e taxa de patches divergentes.
 
 ### 6.2 Escala
 
@@ -333,6 +409,36 @@ Mais tarde, com `canvas_versions` (§6.3), dá para ter um modo **"o que mudou d
 ---
 
 ## 7. API (`apps/api`)
+
+### 7.0 Por que Hono e Better Auth (e quando Express e auth manual fazem sentido)
+
+**Hono × Express.** A API do Hono é quase a do Express (`app.get('/projects', handler)`, middlewares em cadeia), então a curva de aprendizado é pequena. A diferença está no que vem de graça num monorepo TypeScript:
+
+| | Hono | Express 5 |
+|---|---|---|
+| Tipos | TypeScript-first: parâmetros, corpo validado e resposta são inferidos | `req`/`res` pouco tipados; corpo é `any` até você validar |
+| Cliente tipado na web | `hc<AppType>()`: a web importa o *tipo* da API e chama `client.projects[':id'].$get(...)` com autocomplete e erro de compilação se o contrato mudar. Sem codegen | Precisa de uma camada extra (tRPC, ts-rest) ou de tipos duplicados à mão |
+| Validação | `@hono/zod-validator` integrado ao tipo da rota | Middleware próprio ou biblioteca |
+| Async/erros | Nativo | Nativo desde o Express 5 (antes era o problema clássico) |
+| Padrão de plataforma | `Request`/`Response` da Web: o mesmo código roda em Node, Bun, Deno ou edge | Só Node |
+| Ecossistema | Menor, mas cobre o que precisamos (CORS, cookies, rate limit, WebSocket) | Enorme e muito conhecido |
+
+Recomendação: **Hono**, principalmente pelo cliente tipado: ele elimina uma classe inteira de bugs de "a API mudou e a web não". Dito isso, **Express 5 + zod + ts-rest é uma escolha perfeitamente boa** se a familiaridade pesar mais. Nada no resto do plano depende dessa escolha: o Hocuspocus se acopla a qualquer servidor HTTP do Node, e o Better Auth tem adaptador para os dois.
+
+**Better Auth × auth manual.** Login com e-mail e senha "só" parece pequeno. A lista do que precisa estar certo é longa, e cada item é um bug de segurança em potencial:
+
+- hash de senha com argon2id e parâmetros adequados;
+- tokens de sessão aleatórios guardados com hash no banco, cookie `HttpOnly`/`Secure`/`SameSite`, rotação e revogação (por exemplo, ao trocar a senha);
+- proteção contra CSRF;
+- limite de tentativas de login;
+- verificação de e-mail e reset de senha com tokens de uso único que expiram, comparados em tempo constante;
+- OAuth (GitHub/Google) com `state` e PKCE, e vinculação de contas com o mesmo e-mail.
+
+O **Better Auth é uma biblioteca, não um serviço** (não é um Auth0 ou Clerk). Ele roda dentro da sua API, e as tabelas (`user`, `session`, `account`, `verification`) são geradas **no seu schema Drizzle**, no seu Postgres. Você continua dono dos dados, sem mensalidade e sem lock-in. O envio dos e-mails de verificação e de reset é um callback que chama o nosso `Mailer` (§7.2). Se depois quiser 2FA ou passkeys, são plugins.
+
+Auth manual faz sentido se o objetivo for **aprender**. Nesse caso, a referência é o guia do Lucia (lucia-auth.com), que virou um material de "como implementar sessões você mesmo". O plano funciona igual, porque a API só precisa de um `getSession(request) → user`.
+
+### 7.1 Rotas
 
 ```
 Auth (Better Auth)        /api/auth/*  (signup, login, OAuth GitHub/Google, logout, sessão)
@@ -370,10 +476,37 @@ Notificações
 ```
 
 - Contratos em `@erd/contracts` (zod), validados na API e reaproveitados pelo cliente Hono RPC na web.
-- E-mail transacional (convites, pedidos de acesso) atrás de uma interface `Mailer`, com um provedor como Resend em produção e log no console em dev.
 - Testes de integração com Postgres real (Testcontainers ou o Postgres do `docker-compose`), cobrindo **cada regra da tabela de permissões**.
 
-**Import de projeto:** o parse continua no cliente, porque Drizzle exige executar código e o WASM do Postgres já está carregado lá. O cliente monta o `Project`, converte para um update Yjs (`@erd/crdt/fromProject`) e manda para o canvas novo. O servidor valida a projeção do resultado com zod antes de aceitar.
+**Import de projeto:** o cliente monta o `Project` a partir do `.zip` (ou de um `.sql`/`.prisma`/`.ts` solto, com os workers locais), converte para um update Yjs (`@erd/crdt/fromProject`) e manda para o canvas novo. O servidor valida a projeção do resultado com zod antes de aceitar. Os `Y.Text` dos painéis vêm vazios, e o sync bot os gera no formato canônico na primeira carga. Num import de texto solto, o texto original vai direto para o `Y.Text` daquele formato, preservando a formatação e os comentários.
+
+### 7.2 E-mail
+
+**Serviço: Resend** em produção, com templates em **React Email** (`packages/emails`, do mesmo time; os e-mails são componentes JSX com preview no browser).
+
+- **Por que Resend:** a API é uma chamada só (`resend.emails.send({ from, to, subject, react })`), o SDK é bom em TypeScript e o plano gratuito basta para começar (na última vez que conferi, 3.000 e-mails/mês e 100/dia, com um domínio; confirmar o preço atual antes de contratar).
+- **Alternativas:**
+  - **Postmark:** a melhor reputação de entrega para e-mail transacional, mas pago desde o início.
+  - **Amazon SES:** o mais barato em volume (centavos por mil e-mails), porém com mais configuração e uma etapa de aprovação para sair do *sandbox*.
+  - **Brevo** ou **SendGrid:** com plano gratuito, menos agradáveis de usar.
+- **Em dev: Mailpit** no `docker-compose`. É um servidor SMTP falso com interface web (`localhost:8025`) que captura todos os e-mails, para testar convites e resets sem enviar nada de verdade. O e2e lê os links de convite pela API do Mailpit.
+- **Interface `Mailer`** com duas implementações: `ResendMailer` (produção) e `SmtpMailer` (Mailpit, via nodemailer). Trocar de provedor depois é trocar uma classe.
+- **Envio assíncrono com retentativa:** a requisição não espera o e-mail. A rota grava um job, e um worker envia com *backoff* em caso de falha. A fila é o **pg-boss**, que roda sobre o próprio Postgres (sem Redis só para isso). O worker pode ficar no mesmo processo da API no começo.
+- **Domínio:** remetente num subdomínio próprio (por exemplo, `notificacoes@mail.seudominio.com`), com SPF, DKIM e DMARC configurados no DNS. Sem isso, os e-mails caem no spam.
+
+E-mails do sistema:
+
+| E-mail | Disparado por | Pode desligar? |
+|---|---|---|
+| Verificação de conta | Cadastro | Não |
+| Reset de senha | "Esqueci a senha" | Não |
+| Convite para projeto | Compartilhar com um e-mail (com ou sem conta) | Não (é o convite) |
+| Novo pedido de acesso de edição | Viewer pede acesso → vai para quem pode aprovar | Sim (fica só a notificação in-app) |
+| Pedido aprovado / negado | Decisão do owner | Sim |
+| Você foi adicionado / mudou de papel | Mudança em `project_members` | Sim |
+
+- **Antiabuso:** compartilhar dispara e-mail para endereços arbitrários, o que vira vetor de spam. Por isso: limite de convites por usuário e por hora, nenhum conteúdo livre do remetente no assunto, e a mensagem opcional do pedido de acesso aparece escapada e truncada.
+- **Preferências:** em "Configurações > Notificações", com link de *unsubscribe* nos e-mails desligáveis.
 
 ---
 
@@ -393,7 +526,7 @@ Notificações
 ### 8.2 O editor por canvas
 
 - Abas no topo para os canvases do projeto: **"Diagrama ER"** e **"Fluxos de usuário"** (desabilitada, "em breve", até a fase 8).
-- `bootstrap.ts` vira `openCanvas(canvasId)`: cria o `Y.Doc`, liga o `y-indexeddb` (cache local e offline), conecta o `HocuspocusProvider`, cria a projeção, o `UndoManager` e o sync engine. `closeCanvas()` desfaz tudo ao trocar de rota. Os stores deixam de ser singletons globais e passam a ser criados por canvas (`createProjectStore(ydoc)` + React context), para evitar vazamento entre projetos.
+- `bootstrap.ts` vira `openCanvas(canvasId)`: cria o `Y.Doc`, liga o `y-indexeddb` (cache local e offline), conecta o `HocuspocusProvider`, cria a projeção e o `UndoManager`, e liga os editores de código aos `Y.Text` (com o lint local; o sync bot só sobe no browser no modo local). `closeCanvas()` desfaz tudo ao trocar de rota. Os stores deixam de ser singletons globais e passam a ser criados por canvas (`createProjectStore(ydoc)` + React context), para evitar vazamento entre projetos.
 - **Indicador de conexão** no header: "Salvo", "Sincronizando…", "Offline: as alterações serão enviadas ao reconectar".
 - **Modo visualização:** toolbar e Inspector em read-only, editores de código com `EditorState.readOnly`, atalhos de edição desligados (o `keydown` atual passa a checar `can('edit')`), banner com **Pedir acesso de edição**. Exportar continua disponível.
 - O autosave em IndexedDB atual sai: o `y-indexeddb` cumpre esse papel.
@@ -438,7 +571,7 @@ O objetivo é desenhar jornadas (telas, ações, decisões) e **ligá-las ao mod
 
 ## 10. Migração do app atual
 
-- O **modo local** (`/local`) continua existindo sem conta. Ele usa o mesmo Y.Doc com `y-indexeddb` e sem provider, o que testa o binding CRDT sem servidor e mantém o app usável offline e para quem só quer experimentar.
+- O **modo local** (`/local`) continua existindo sem conta. Ele usa o mesmo Y.Doc com `y-indexeddb` e sem provider, e o **sync bot roda no próprio browser**: é o mesmo `@erd/sync`, com o Drizzle no worker atual em vez do isolate. Com um só usuário há um só escritor, então a regra do §4.6 vale do mesmo jeito. Isso testa o binding CRDT e o bot sem servidor, e mantém o app usável offline e para quem só quer experimentar.
 - **"Enviar para a nuvem":** num projeto local, depois do login, cria o projeto no servidor e envia o estado do Y.Doc.
 - **Conversão do IndexedDB antigo** (chave `current` com o `Project` em JSON) para o Y.Doc local via `@erd/crdt/fromProject`, na primeira abertura.
 - O `.zip` continua igual (`project.json`, `notes/*.md`, os três schemas), então import e export entre local e nuvem funcionam nos dois sentidos.
@@ -451,10 +584,12 @@ O objetivo é desenhar jornadas (telas, ações, decisões) e **ligá-las ao mod
 |---|---|
 | `@erd/model` | Os testes atuais (`sql`, `prisma`, `drizzle`, `roundtrip.property`...) migram sem mudança. |
 | `@erd/crdt` (propriedade, fast-check) | **Convergência:** N réplicas aplicam sequências aleatórias de ações de `actions.ts` em ordens diferentes e terminam com a mesma projeção. **Validade:** toda projeção passa no zod e gera SQL que o `libpg-query` aceita. **Ida e volta:** `project(fromProject(p)) ≡ p`. **Diff mínimo:** `applyDiff(a, a)` não gera nenhuma operação. |
-| Merge de painel | Dois rascunhos de SQL editando tabelas diferentes da mesma base convergem sem banner; editando a mesma coluna, *last-writer-wins*; editando uma tabela que outro apagou, banner. |
+| `@erd/sync` (propriedade + cenários) | **Sem duplicação:** N clientes digitando concorrentemente no mesmo `Y.Text` → o modelo tem cada tabela uma única vez. **Parse por bloco:** um statement quebrado não apaga as entidades dele e não bloqueia os outros blocos. **Patch modelo → texto:** renomear no canvas com o texto reformatado à mão ainda acerta a linha; um patch que não encaixa vira bloco divergente, nunca texto corrompido. **Ponto fixo:** texto canônico → parse → gerar é idempotente, e o bot não entra em loop com as próprias escritas. |
+| `@erd/sandbox` | Loop infinito → timeout; alocação gigante → limite de memória; `require('fs')`, `process` e `fetch` indisponíveis; o crash de um isolate não derruba o collab. |
 | API | Integração com Postgres real: matriz de permissões completa, convites, pedidos de acesso (incluindo os pendentes duplicados), mudança de papel. |
 | Collab | Uma conexão read-only não altera o documento; um token de outro canvas é recusado; a mudança de papel reconecta; a compactação preserva o estado. |
-| E2E (Playwright) | Dois `browserContext`s logados como usuários diferentes: criar uma tabela em A e vê-la em B em menos de 1 s; cursor e anel de seleção na cor certa; o viewer não edita e pede acesso; o owner aprova e o viewer vira editor sem recarregar; offline em A → editar → reconectar → B recebe. Os roteiros atuais (`e2e/*.mjs`) migram para `@playwright/test`. |
+| E-mail | Os templates renderizam (snapshot); o convite chega no Mailpit com um link válido que expira; o limite de convites por hora funciona; com o envio falhando, o job é retentado. |
+| E2E (Playwright) | Dois `browserContext`s logados como usuários diferentes: criar uma tabela em A e vê-la em B em menos de 1 s; **A e B digitando no mesmo painel SQL ao mesmo tempo**, com os dois cursores visíveis e o canvas refletindo as duas tabelas; cursor e anel de seleção na cor certa; o viewer não edita e pede acesso; o owner aprova pelo link do e-mail (lido no Mailpit) e o viewer vira editor sem recarregar; offline em A → editar → reconectar → B recebe. Os roteiros atuais (`e2e/*.mjs`) migram para `@playwright/test`. |
 
 A CI (GitHub Actions) roda, via Turborepo e com cache por pacote: lint, typecheck, testes unitários e de propriedade, integração com o serviço Postgres e e2e.
 
@@ -467,11 +602,11 @@ Cada fase termina com o app funcionando e os testes verdes. A ordem ataca primei
 | Fase | Entrega | Critério de pronto |
 |---|---|---|
 | **0. Monorepo** | pnpm + Turborepo; `src/` vira `apps/web`; `src/model` + `src/formats` viram `packages/model`; `packages/config`; CI. **Nenhuma mudança de comportamento.** | `pnpm build`, `test` e `e2e` passam como hoje. |
-| **1. Y.Doc local** | `packages/crdt` (schema, `fromProject`, projeção, `applyDiff`); `commit()` reimplementado por cima do Y.Doc; `Y.UndoManager` no lugar do zundo; `y-indexeddb` no lugar do autosave; `view` separado do documento. Ainda sem servidor. | Testes de propriedade de convergência e de ida e volta; todos os e2e atuais passam; undo e redo com o mesmo comportamento percebido. |
-| **2. Backend + contas** | `packages/db`, `apps/api` com Better Auth, CRUD de projetos e canvases, dashboard e rotas na web, import do `.zip` e do projeto local. Persistência por enquanto via upload do estado Yjs pela API (sem tempo real). | Criar conta, criar e abrir projetos, recarregar e ver o estado salvo. |
-| **3. Tempo real** | `apps/collab` (Hocuspocus, persistência com log e compactação, token JWT); `HocuspocusProvider` na web; indicador de conexão; arraste via awareness; merge de três vias nos painéis. | E2E com dois usuários editando o mesmo canvas, incluindo offline e reconexão. |
-| **4. Compartilhamento** | Membros, convites por e-mail, papéis, modo visualização, pedidos de acesso, notificações, mudança de papel ao vivo, link de visualização. | Matriz de permissões coberta por testes de API e e2e. |
-| **5. Presença e autoria** | Cores por membro, cursores, anéis de seleção, soft lock, avatares e "seguir", notas com cursores remotos, rastro recente, modo "Mostrar autoria", presença nos painéis via source map. | E2E verificando cor e rótulo; teste manual com 3 a 4 pessoas. |
+| **1. Y.Doc local** | `packages/crdt` (schema, `fromProject`, projeção, `applyDiff`); `commit()` reimplementado por cima do Y.Doc; `Y.UndoManager` no lugar do zundo; `y-indexeddb` no lugar do autosave; `view` separado do documento. **Painéis sobre `Y.Text` + `packages/sync` rodando no browser** (parse por bloco, patch modelo → texto, blocos divergentes), substituindo o `sync/engine.ts`. Ainda sem servidor. | Testes de propriedade do CRDT e do bot; todos os e2e atuais passam; undo e redo com o mesmo comportamento percebido. Dá para simular dois usuários com dois Y.Docs no mesmo processo, antes de existir rede. |
+| **2. Backend + contas** | `packages/db`, `apps/api` com Better Auth, `packages/emails` + `Mailer` + Mailpit (verificação de conta e reset de senha já usam e-mail), CRUD de projetos e canvases, dashboard e rotas na web, import do `.zip` e do projeto local. Persistência por enquanto via upload do estado Yjs pela API (sem tempo real). | Criar conta (com o e-mail de verificação chegando no Mailpit), criar e abrir projetos, recarregar e ver o estado salvo. |
+| **3. Tempo real** | `apps/collab` (Hocuspocus, persistência com log e compactação, token JWT); **o sync bot passa do browser para o servidor**, com `packages/sandbox` para o Drizzle; `HocuspocusProvider` na web; indicador de conexão; arraste via awareness; cursores remotos básicos nos painéis. | E2E com dois usuários editando o mesmo canvas **e o mesmo painel de código**, incluindo offline e reconexão. |
+| **4. Compartilhamento** | Membros, convites por e-mail, papéis, modo visualização, pedidos de acesso, notificações in-app e por e-mail (com fila pg-boss e preferências), mudança de papel ao vivo, link de visualização. Conta no Resend e DNS (SPF/DKIM/DMARC) do domínio. | Matriz de permissões coberta por testes de API e e2e. |
+| **5. Presença e autoria** | Cores por membro, cursores no canvas, anéis de seleção, soft lock, avatares e "seguir", notas e painéis com rastro de digitação, erros com dono, ponte painel ⇄ canvas via source map, rastro recente, modo "Mostrar autoria" (entidades e trechos de texto). | E2E verificando cor e rótulo; teste manual com 3 a 4 pessoas digitando no mesmo SQL. |
 | **6. Produção** | Versões nomeadas e restauração, thumbnails, limites e taxas, observabilidade (logs estruturados, métricas de conexões e tamanho de documentos), deploy, backups. | Deploy de staging; teste de carga com cerca de 20 clientes num documento de 200 tabelas. |
 | **7. Escala** (sob demanda) | Separar API e collab; extensão Redis; múltiplas instâncias. | — |
 | **8. Fluxos de usuário** | `CanvasKind` "flow" (§9). | — |
@@ -483,6 +618,8 @@ O **contrato `CanvasKind`** (§8.3) entra na fase 1 ou 3, quando o editor deixa 
 - **Web:** estático (Cloudflare Pages, Vercel ou Netlify). Atenção aos headers do WASM do `libpg-query` e ao `Content-Type` correto.
 - **API + collab:** um container Node com suporte a WebSocket de longa duração (Fly.io, Railway ou Render; *não* serverless, porque o Hocuspocus precisa de conexões persistentes).
 - **Postgres** gerenciado (Neon, Supabase ou RDS) com backup diário; Redis só a partir da fase 7.
+- **E-mail:** Resend, com o domínio verificado (§7.2).
+- O container do collab precisa compilar o módulo nativo do `isolated-vm` (imagem Node completa, não *alpine* mínima) e reservar memória para o pool do sandbox.
 - Domínio único com proxy (`app.dominio` → web, `/api` e `/collab` → Node) para o cookie de sessão funcionar sem dor de CORS.
 
 ---
@@ -493,19 +630,26 @@ O **contrato `CanvasKind`** (§8.3) entra na fase 1 ou 3, quando o editor deixa 
 |---|---|
 | Merges que quebram invariantes do schema (FK órfã, nomes duplicados) | Projeção tolerante + diagnósticos nos painéis; correções só como intenção local (§4.2); testes de propriedade com réplicas concorrentes. |
 | `applyDiff` lento em diagramas grandes | Pular sub-árvores por referência (`===`) do immer; *benchmark* com 500 tabelas na fase 1. |
-| Painel de código "brigando" com edições remotas | Merge de três vias contra a `base` (§4.6); regenerar só quando o painel está ocioso. |
+| Tradução texto ⇄ modelo duplicando entidades ou texto | Um único escritor (o sync bot) por documento, com fila serial (§4.6); teste de propriedade "sem duplicação". |
+| Digitação de um bloqueando a sincronização dos outros | Parse por bloco com entidades congeladas (§4.6). Exceção: o Drizzle continua por arquivo inteiro (limitação documentada). |
+| Patch modelo → texto caindo no lugar errado | Patch com contexto (*fuzzy*); na dúvida, o bloco vira divergente com escolha explícita, nunca uma escrita às cegas. |
+| Gargalo no sync bot com muitos documentos ativos | Parse barato (WASM); Drizzle num pool de workers; debounce por documento; métricas de fila; se preciso, o bot vira um serviço separado consumindo os documentos via Redis. |
 | Crescimento do log de updates | Compactação periódica + GC do Yjs; arraste via awareness. |
 | Editor malicioso corrompendo o documento | Validação zod na projeção; limites de tamanho e taxa no collab; versões para restaurar; `audit_log`. |
 | Mudança de papel não refletida em sessões abertas | Evento `permission-changed` + JWT curto (5 min) como rede de segurança. |
 | Undo surpreendente em colaboração | Documentar a semântica "desfaz só as suas mudanças"; restaurar a seleção junto com o undo. |
-| Executar Drizzle no servidor | Não fazer: o parse de Drizzle é só no cliente (§1). |
+| Executar o Drizzle do usuário no servidor | Isolate V8 sem APIs do Node (`isolated-vm`), com limites de memória e tempo, num `worker_thread` separado; plano B com processos filhos e `--permission`; testes de escape no `@erd/sandbox` (§1). |
+| E-mails caindo no spam / abuso de convites | SPF, DKIM e DMARC num subdomínio próprio; limite de convites por hora; conteúdo do remetente escapado (§7.2). |
 
 ---
 
 ## 14. Decisões em aberto (com recomendação)
 
-1. **Os painéis de código devem ser de digitação compartilhada** (duas pessoas no mesmo texto SQL, com cursores)? Recomendação: **não por enquanto**. O merge pelo modelo (§4.6) evita SQL inválido no meio de uma digitação alheia. Dá para reavaliar depois da fase 5.
-2. **Provedores de login:** e-mail/senha + GitHub + Google? (Recomendação: sim, os três.)
-3. **Manter o modo local sem conta?** Recomendação: sim. É barato, porque usa o mesmo binding CRDT, e serve de porta de entrada.
-4. **Editores podem compartilhar?** Default `editorsCanShare: false`, configurável por projeto.
-5. **Hospedagem e e-mail:** escolher os provedores antes da fase 6. O código fica atrás de interfaces (`Mailer`, `Storage` para thumbnails) para não acoplar.
+Já decidido: **Drizzle** no backend; **painéis de código com digitação compartilhada** estilo Docs (§4.6).
+
+1. **Hono ou Express 5?** Recomendação: Hono, pelo cliente tipado (§7.0). Se preferir Express, entra ts-rest para manter a tipagem ponta a ponta, e o resto do plano não muda.
+2. **Better Auth ou auth manual?** Recomendação: Better Auth (§7.0). Auth manual só se a ideia for aprender, usando o guia do Lucia como referência.
+3. **Provedores de login:** e-mail/senha + GitHub + Google? (Recomendação: sim, os três.)
+4. **Manter o modo local sem conta?** Recomendação: sim. É barato, porque usa o mesmo binding CRDT, e serve de porta de entrada.
+5. **Editores podem compartilhar?** Default `editorsCanShare: false`, configurável por projeto.
+6. **Hospedagem:** escolher o provedor antes da fase 6. O código fica atrás de interfaces (`Mailer`, `Storage` para thumbnails) para não acoplar.
