@@ -67,8 +67,27 @@ export function DrivePanel({ project, canvasId, canvasName }: { project: Project
   };
   const isOwner = can(project.role, 'driveConfigure', project.settings);
   if (cfg.isLoading || q.isLoading) return <Loader2 size={16} className="animate-spin text-slate-400" />;
+  // erro ao carregar não é "não configurado": mostra a mensagem da API e deixa tentar de novo
+  const failed = cfg.error ?? q.error;
+  if (failed)
+    return (
+      <div className="space-y-2 text-[12.5px]" data-testid="drive-load-error">
+        <Warning text={`Não foi possível carregar o Google Drive: ${failed.message}`} />
+        <button
+          onClick={() => void Promise.all([cfg.refetch(), q.refetch()])}
+          className="rounded-md border border-slate-300 px-2.5 py-1 hover:bg-slate-50"
+        >
+          Tentar de novo
+        </button>
+      </div>
+    );
   if (!cfg.data?.enabled || !q.data?.enabled)
-    return <p className="text-[12.5px] text-slate-500">O Google Drive não está configurado neste servidor. Ainda dá para baixar o .docx.</p>;
+    return (
+      <p className="text-[12.5px] text-slate-500">
+        O Google Drive não está configurado neste servidor. Ainda dá para baixar o .docx.
+        {!!cfg.data?.missing?.length && <> Falta no servidor: {cfg.data.missing.join(', ')}.</>}
+      </p>
+    );
   const d = q.data;
   const b = d.bindings.find((x) => x.canvasId === canvasId) ?? null;
 

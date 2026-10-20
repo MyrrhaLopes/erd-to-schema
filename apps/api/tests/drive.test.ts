@@ -6,9 +6,10 @@ import { parseSql } from '@erd/model/formats/sql/parse';
 import { columnSql } from '@erd/model/formats/sql/generate';
 import { reconcile } from '@erd/model/reconcile';
 import { emptyProject } from '@erd/model/project';
-import type { DriveProject, DrivePublication, Notification, Version } from '@erd/contracts';
+import type { DriveConfig, DriveProject, DrivePublication, Notification, Version } from '@erd/contracts';
 import { canvasVersions, driveBindings, drivePendingDeletions, eq } from '@erd/db';
 import { FakeDrive } from '../src/drive/fake';
+import { driveMissing } from '../src/env';
 import type { InlineJobQueue } from '../src/queue';
 import type { DriveJob } from '../src/drive/service';
 import { harness } from './harness';
@@ -379,5 +380,17 @@ describe('transferência de posse com Drive (§6)', () => {
     expect(fake.files.get(b.fileId!)!.owner).toBe(novo.id);
     expect(fake.files.has(old.fileId!)).toBe(false);
     expect((await history(novo, p.canvasId)).map((x) => x.action)).toEqual(expect.arrayContaining(['owner_transferred', 'folder_changed']));
+  });
+});
+
+describe('configuração', () => {
+  it('com o Drive ligado não falta nada; desligado, a API diz quais variáveis faltam', async () => {
+    const a = await h.signup('Configura');
+    expect((await a.json<DriveConfig>('/api/drive/config')).body).toMatchObject({ enabled: true, provider: 'fake', missing: [] });
+
+    const env = (extra: Record<string, string>) => ({ ...h.env, DRIVE_PROVIDER: undefined, GOOGLE_CLIENT_ID: undefined, GOOGLE_PICKER_API_KEY: undefined, GOOGLE_PROJECT_NUMBER: undefined, ...extra });
+    expect(driveMissing(env({ GOOGLE_CLIENT_ID: 'id', GOOGLE_PICKER_API_KEY: 'k' }))).toEqual(['GOOGLE_PROJECT_NUMBER']);
+    expect(driveMissing(env({}))).toEqual(['GOOGLE_CLIENT_ID', 'GOOGLE_PICKER_API_KEY', 'GOOGLE_PROJECT_NUMBER']);
+    expect(driveMissing(env({ GOOGLE_CLIENT_ID: 'id', GOOGLE_PICKER_API_KEY: 'k', GOOGLE_PROJECT_NUMBER: '1' }))).toEqual([]);
   });
 });

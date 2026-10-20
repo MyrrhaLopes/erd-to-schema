@@ -49,6 +49,11 @@ services:
       REDIS_URL: ${REDIS_URL:-}
       # o E2E usa o Drive em memória (DRIVE_PROVIDER=fake); vazio = sem Drive
       DRIVE_PROVIDER: ${DRIVE_PROVIDER:-}
+      # Drive do Google (vazias = sem Drive)
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_PICKER_API_KEY: ${GOOGLE_PICKER_API_KEY:-}
+      GOOGLE_PROJECT_NUMBER: ${GOOGLE_PROJECT_NUMBER:-}
     depends_on:
       postgres: { condition: service_healthy }
       createdb: { condition: service_completed_successfully }

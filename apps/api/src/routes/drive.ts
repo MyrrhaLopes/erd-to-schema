@@ -7,7 +7,7 @@ import { and, asc, auditLog, canvases, canvasVersions, desc, driveBindings, driv
 import { DriveFolderZ, DriveSettingsZ, PublishZ, type DriveBinding, type DriveConfig, type DriveProject, type DrivePublication } from '@erd/contracts';
 import { buildDataDictionary, buildOutline, contentHash, diffProjects } from '@erd/docx';
 import { canvasAccess, projectAccess, requireCan, requireUser, type AppEnv, type Deps } from '../context';
-import { driveProviderKind } from '../env';
+import { driveMissing, driveProviderKind } from '../env';
 import { stateToProject, type Binding, type DriveService } from '../drive/service';
 import { DriveError } from '../drive/provider';
 import type { FakeDrive } from '../drive/fake';
@@ -105,6 +105,7 @@ export function driveConfigRoutes(deps: Deps) {
       pickerApiKey: kind === 'google' ? (deps.env.GOOGLE_PICKER_API_KEY ?? null) : null,
       appId: kind === 'google' ? (deps.env.GOOGLE_PROJECT_NUMBER ?? null) : null,
       clientId: kind === 'google' ? (deps.env.GOOGLE_CLIENT_ID ?? null) : null,
+      missing: deps.drive ? [] : driveMissing(deps.env),
     };
     return c.json(out);
   });

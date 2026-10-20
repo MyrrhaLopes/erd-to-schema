@@ -65,6 +65,14 @@ export function driveProviderKind(e: Env): 'google' | 'fake' | null {
   return null;
 }
 
+const DRIVE_VARS = ['GOOGLE_CLIENT_ID', 'GOOGLE_PICKER_API_KEY', 'GOOGLE_PROJECT_NUMBER'] as const;
+
+/** As variáveis que faltam para o Drive do Google (vazio com o Drive ligado): a tela e o log do boot dizem quais */
+export function driveMissing(e: Env): string[] {
+  if (driveProviderKind(e)) return [];
+  return DRIVE_VARS.filter((k) => !e[k]);
+}
+
 /** Valida as variáveis no boot: com variável faltando, o processo cai com uma mensagem clara e o healthcheck nunca passa */
 export function loadEnv(source: Record<string, string | undefined> = process.env): Env {
   // variável definida vazia (`REDIS_URL=` no compose, por exemplo) conta como ausente

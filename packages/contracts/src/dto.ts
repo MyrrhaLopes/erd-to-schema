@@ -166,6 +166,8 @@ export const DriveConfigZ = z.object({
   pickerApiKey: z.string().nullable(),
   appId: z.string().nullable(),
   clientId: z.string().nullable(),
+  /** Com o Drive desligado, as variáveis de ambiente que faltam no servidor */
+  missing: z.array(z.string()),
 });
 export type DriveConfig = z.infer<typeof DriveConfigZ>;
 
