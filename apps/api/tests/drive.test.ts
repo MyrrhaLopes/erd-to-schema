@@ -285,6 +285,24 @@ describe('publicar (§3)', () => {
   });
 });
 
+describe('configuração', () => {
+  it('diz quais variáveis faltam para o Drive do Google ligar', async () => {
+    const { driveMissing, loadEnv } = await import('../src/env');
+    const base = {
+      APP_URL: 'http://a.test',
+      BETTER_AUTH_URL: 'http://a.test',
+      DATABASE_URL: 'postgres://x@y/z',
+      BETTER_AUTH_SECRET: 'x'.repeat(40),
+      COLLAB_JWT_SECRET: 'y'.repeat(40),
+    };
+    expect(driveMissing(loadEnv(base))).toEqual(['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_PICKER_API_KEY', 'GOOGLE_PROJECT_NUMBER']);
+    expect(driveMissing(loadEnv({ ...base, GOOGLE_CLIENT_ID: 'id', GOOGLE_CLIENT_SECRET: 's', GOOGLE_PICKER_API_KEY: 'k' }))).toEqual(['GOOGLE_PROJECT_NUMBER']);
+    expect(driveMissing(loadEnv({ ...base, DRIVE_PROVIDER: 'fake' }))).toEqual([]);
+    const owner = await h.signup(`Cfg${Math.random().toString(36).slice(2, 6)}`);
+    expect((await owner.json('/api/drive/config')).body).toMatchObject({ enabled: true, provider: 'fake', missing: [] });
+  });
+});
+
 describe('trocar a pasta (§5) e desconectar', () => {
   it('cria na nova, exclui definitivamente na antiga, sem versão nova', async () => {
     const { owner, p, folder } = await setup();

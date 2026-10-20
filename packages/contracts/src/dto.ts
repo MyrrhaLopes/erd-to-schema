@@ -166,6 +166,8 @@ export const DriveConfigZ = z.object({
   pickerApiKey: z.string().nullable(),
   appId: z.string().nullable(),
   clientId: z.string().nullable(),
+  /** Nomes das variáveis do `server` que faltam para o Drive ligar (diagnóstico na interface) */
+  missing: z.array(z.string()),
 });
 export type DriveConfig = z.infer<typeof DriveConfigZ>;
 

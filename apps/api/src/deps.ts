@@ -6,7 +6,7 @@ import { CanvasStore, createCollab, RedisLeader } from '@erd/collab';
 import { createAuth } from './auth';
 import { roleOf, type CanvasWriter, type Deps } from './context';
 import { createPgEvents } from './events';
-import { driveProviderKind, type Env } from './env';
+import { driveMissing, driveProviderKind, type Env } from './env';
 import { createLogger, type Logger } from './log';
 import { createMailer, type Mailer } from './mailer';
 import { BossMailQueue, InlineMailQueue } from './mailQueue';
@@ -84,8 +84,15 @@ export function createDeps(env: Env, overrides: DepsOptions = {}): Deps {
  */
 function createDrive(deps: Deps, boss: SharedBoss | null, provider?: DriveProvider): DriveService | undefined {
   const kind = provider?.kind ?? driveProviderKind(deps.env);
-  if (!kind) return undefined;
   const log = deps.log.child({ component: 'drive' });
+  if (!kind) {
+    // só os nomes: diz no log do deploy por que a interface mostra "não configurado"
+    const missing = driveMissing(deps.env);
+    if (missing.length < 4) log.warn({ missing }, 'Google Drive desligado: faltam variáveis');
+    else log.info('Google Drive desligado (sem as variáveis do Google)');
+    return undefined;
+  }
+  log.info({ provider: kind }, 'Google Drive ligado');
   const service = new DriveService({
     db: deps.db,
     provider: provider ?? (kind === 'fake' ? new FakeDrive() : new GoogleDrive()),

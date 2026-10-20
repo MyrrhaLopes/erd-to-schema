@@ -58,6 +58,15 @@ export const EnvZ = z
 
 export type Env = z.infer<typeof EnvZ>;
 
+/** Variáveis que faltam para o Drive do Google ligar (só os nomes; vazio = completo ou Drive falso) */
+export function driveMissing(e: Env): string[] {
+  if (e.DRIVE_PROVIDER === 'fake') return [];
+  const need = { GOOGLE_CLIENT_ID: e.GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET: e.GOOGLE_CLIENT_SECRET, GOOGLE_PICKER_API_KEY: e.GOOGLE_PICKER_API_KEY, GOOGLE_PROJECT_NUMBER: e.GOOGLE_PROJECT_NUMBER };
+  return Object.entries(need)
+    .filter(([, v]) => !v)
+    .map(([k]) => k);
+}
+
 /** Qual Drive usar: o falso, o do Google (com as três variáveis) ou nenhum (a funcionalidade some) */
 export function driveProviderKind(e: Env): 'google' | 'fake' | null {
   if (e.DRIVE_PROVIDER === 'fake') return 'fake';
