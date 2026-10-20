@@ -52,6 +52,8 @@ Resumo do §15 do plano. Um projeto Railway com três serviços:
 
 Daí em diante: PR → CI verde → merge → deploy automático.
 
+**E-mail em produção:** crie a conta no Resend com um subdomínio de envio próprio (por exemplo, `mail.seudominio.com`) e os registros **SPF, DKIM e DMARC** no DNS; sem isso, convites e pedidos de acesso caem no spam. `EMAIL_FROM` usa esse subdomínio.
+
 **Produção x staging:** duplique o ambiente (*Environments → New → Duplicate*) para ter `staging` com banco próprio; a produção deploya de `main` (com aprovação) e o staging do branch de desenvolvimento. Configure *usage limits* e alertas de gasto no workspace.
 
 **Backups:** além dos backups de volume do Postgres no Railway (diário e semanal, aba *Backups*), o workflow [`backup.yml`](.github/workflows/backup.yml) faz um `pg_dump` semanal cifrado (segredos `DATABASE_PUBLIC_URL` e `BACKUP_PASSPHRASE`) e guarda como artefato por 90 dias, fora do Railway.

@@ -111,5 +111,7 @@ jobs:
           CLIENTS: '20'
           TABLES: '200'
           SECONDS: '45'
+          # o runner tem poucos núcleos para servidor, Postgres, Redis e 20 clientes juntos
+          MAX_P95_MS: '2000'
       - if: failure()
         run: docker compose --profile prod --profile scale logs
