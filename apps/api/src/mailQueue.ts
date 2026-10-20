@@ -1,7 +1,7 @@
-import { PgBoss } from 'pg-boss';
 import { emails, type EmailKind } from '@erd/emails';
 import type { Logger } from './log';
 import type { Mailer } from './mailer';
+import { SharedBoss } from './queue';
 
 /** Um e-mail a enviar: o tipo do template e as props dele (renderizado só na hora do envio) */
 export type EmailJob = { [K in EmailKind]: { kind: K; to: string; props: Parameters<(typeof emails)[K]>[0] } }[EmailKind];
@@ -26,21 +26,24 @@ const QUEUE = 'email';
 
 /** pg-boss: a fila roda sobre o próprio Postgres (sem Redis só para isso), no mesmo processo da API */
 export class BossMailQueue implements MailQueue {
-  private boss: PgBoss;
+  private shared: SharedBoss;
   private started = false;
   constructor(
-    url: string,
+    url: string | SharedBoss,
     private readonly mailer: Mailer,
     private readonly log: Logger,
     private readonly opts: { retryDelay?: number; pollingIntervalSeconds?: number } = {},
   ) {
-    this.boss = new PgBoss({ connectionString: url, max: 3 });
-    this.boss.on('error', (e: unknown) => log.error({ err: e }, 'pg-boss'));
+    this.shared = typeof url === 'string' ? new SharedBoss(url, log) : url;
+  }
+
+  private get boss() {
+    return this.shared.boss;
   }
 
   async start() {
     if (this.started) return;
-    await this.boss.start();
+    await this.shared.start();
     await this.boss.createQueue(QUEUE, { retryLimit: 6, retryDelay: this.opts.retryDelay ?? 10, retryBackoff: true, deleteAfterSeconds: 7 * 86400 });
     await this.boss.work<EmailJob>(QUEUE, { pollingIntervalSeconds: this.opts.pollingIntervalSeconds ?? 2 }, async (jobs) => {
       for (const job of jobs) {
@@ -60,7 +63,7 @@ export class BossMailQueue implements MailQueue {
   }
 
   async stop() {
-    if (this.started) await this.boss.stop({ graceful: true, timeout: 10_000 });
+    if (this.started) await this.shared.stop();
     this.started = false;
   }
 }

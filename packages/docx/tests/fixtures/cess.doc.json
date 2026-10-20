@@ -1,0 +1,25 @@
+{
+  "project": "CESS",
+  "cover": {
+    "title": "Modelo de Dados",
+    "subtitle": "Sistema CESS",
+    "edition": "{projeto} — versão {versao}",
+    "scope": "Escopo: cadastro de pessoas, projetos e auditoria do sistema CESS."
+  },
+  "intro": "As tabelas seguem as convenções abaixo. Exceções estão listadas explicitamente.",
+  "conventions": {
+    "pk": "Identidade interna estável e barata para junções",
+    "uuid": "Identificador público, sem expor a sequência",
+    "audit": "Rastreabilidade de criação e alteração"
+  },
+  "rules": {
+    "User": ["Um login ativo por pessoa", "Contas bloqueadas não autenticam"]
+  },
+  "functions": {
+    "Project.clientId": { "fromSide": "cliente do projeto", "toSide": "projetos em que é cliente" },
+    "Project.ownerId": { "fromSide": "responsável", "toSide": "projetos sob responsabilidade" }
+  },
+  "notes": [
+    { "title": "Módulo A — Cadastro e Pessoas", "content": "Cadastro de **pessoas** e contas.\n\n- Pessoa é a entidade raiz\n- Usuário é a conta de acesso" }
+  ]
+}

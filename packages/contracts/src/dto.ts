@@ -90,10 +90,19 @@ export const EmailPrefsZ = z.object({
   accessRequests: z.boolean().default(true),
   decisions: z.boolean().default(true),
   membership: z.boolean().default(true),
+  /** Avisos do documento no Drive (edição externa, falhas, troca de posse) */
+  drive: z.boolean().default(true),
 });
 export type EmailPrefs = z.infer<typeof EmailPrefsZ>;
 
-export const VersionZ = z.object({ id: z.string(), label: z.string(), createdAt: z.string(), createdBy: z.object({ id: z.string(), name: z.string() }).nullable() });
+export const VersionZ = z.object({
+  id: z.string(),
+  label: z.string(),
+  createdAt: z.string(),
+  createdBy: z.object({ id: z.string(), name: z.string() }).nullable(),
+  /** Versão de publicação no Drive: não conta no limite, não é podada nem apagada */
+  protected: z.boolean().optional(),
+});
 export type Version = z.infer<typeof VersionZ>;
 export const CreateVersionZ = z.object({ label: z.string().trim().min(1).max(120) });
 
@@ -115,9 +124,103 @@ export const StatelessZ = z.discriminatedUnion('type', [
   z.object({ type: z.literal('clear-divergent'), format: z.enum(['sql', 'prisma', 'drizzle']) }),
   z.object({ type: z.literal('permission-changed'), role: RoleZ.nullable() }),
   z.object({ type: z.literal('restored'), versionId: z.string(), label: z.string().optional(), by: z.string().optional() }),
+  z.object({
+    type: z.literal('drive'),
+    event: z.enum(['published', 'failed', 'folder_changed', 'unchanged']),
+    by: z.string().optional(),
+    version: z.number().optional(),
+    link: z.string().optional(),
+    error: z.string().optional(),
+  }),
 ]);
 export type Stateless = z.infer<typeof StatelessZ>;
 
 /** Evento publicado pela API quando um papel muda (Postgres LISTEN/NOTIFY ou Redis); `userId: '*'` reavalia todos do projeto */
 export const PermissionChangedZ = z.object({ projectId: z.string(), userId: z.string(), role: RoleZ.nullable() });
 export type PermissionChanged = z.infer<typeof PermissionChangedZ>;
+
+/* ------------------------------------------------------------------ */
+/* Documento Word no Google Drive (docs/drive-docx-plan.md)             */
+/* ------------------------------------------------------------------ */
+
+export const DRIVE_BINDING_STATUS = ['active', 'needs_reconnect', 'needs_folder', 'transfer_pending', 'paused'] as const;
+export type DriveBindingStatus = (typeof DRIVE_BINDING_STATUS)[number];
+
+export const DRIVE_ACTIONS = [
+  'published',
+  'unchanged',
+  'failed',
+  'folder_changed',
+  'recreated',
+  'external_edit_detected',
+  'moved_externally',
+  'relocked',
+  'disconnected',
+  'owner_transferred',
+] as const;
+export type DriveAction = (typeof DRIVE_ACTIONS)[number];
+
+export const DriveConfigZ = z.object({
+  enabled: z.boolean(),
+  provider: z.enum(['google', 'fake']),
+  pickerApiKey: z.string().nullable(),
+  appId: z.string().nullable(),
+  clientId: z.string().nullable(),
+});
+export type DriveConfig = z.infer<typeof DriveConfigZ>;
+
+export const DriveBindingZ = z.object({
+  canvasId: z.string(),
+  canvasName: z.string(),
+  folderId: z.string(),
+  folderName: z.string(),
+  folderPath: z.string().nullable(),
+  fileId: z.string().nullable(),
+  fileName: z.string().nullable(),
+  webViewLink: z.string().nullable(),
+  lastVersion: z.number(),
+  lastContentHash: z.string().nullable(),
+  lastPublishedAt: z.string().nullable(),
+  lastPublishedBy: z.string().nullable(),
+  lock: z.enum(['none', 'locked', 'pending']),
+  status: z.enum(DRIVE_BINDING_STATUS),
+  /** Problema observado no Drive (edição externa, arquivo sumido...), para a faixa no diálogo */
+  anomaly: z.string().nullable(),
+  autoPublish: z.boolean(),
+  connectedUser: z.object({ id: z.string(), name: z.string() }).nullable(),
+  pendingDeletions: z.array(z.object({ fileId: z.string(), folderName: z.string().nullable(), attempts: z.number(), lastError: z.string().nullable(), manual: z.boolean(), link: z.string() })),
+});
+export type DriveBinding = z.infer<typeof DriveBindingZ>;
+
+export const DriveProjectZ = z.object({
+  enabled: z.boolean(),
+  provider: z.enum(['google', 'fake']),
+  isOwner: z.boolean(),
+  owner: z.object({ id: z.string(), name: z.string() }),
+  /** Conta Google do dono com o escopo do Drive */
+  account: z.object({ connected: z.boolean(), email: z.string().nullable(), name: z.string().nullable() }),
+  bindings: z.array(DriveBindingZ),
+});
+export type DriveProject = z.infer<typeof DriveProjectZ>;
+
+export const DrivePublicationZ = z.object({
+  id: z.string(),
+  action: z.enum(DRIVE_ACTIONS),
+  version: z.number().nullable(),
+  revertedFrom: z.number().nullable(),
+  canvasVersionId: z.string().nullable(),
+  requestedBy: z.object({ id: z.string(), name: z.string() }).nullable(),
+  folderName: z.string().nullable(),
+  previousFolderName: z.string().nullable(),
+  oldFileDeletedAt: z.string().nullable(),
+  sizeBytes: z.number().nullable(),
+  externalActor: z.object({ name: z.string().optional(), email: z.string().optional() }).nullable(),
+  error: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type DrivePublication = z.infer<typeof DrivePublicationZ>;
+
+export const PublishZ = z.object({ reviewedHash: z.string().min(8).max(128), revertedFrom: z.number().int().positive().optional() });
+export const DriveFolderZ = z.object({ folderId: z.string().min(1).max(200) });
+export const DriveSettingsZ = z.object({ autoPublish: z.boolean() });
+export const DriveJobStateZ = z.object({ state: z.enum(['queued', 'active', 'completed', 'failed', 'unknown']) });

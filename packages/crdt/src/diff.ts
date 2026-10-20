@@ -1,5 +1,7 @@
 import * as Y from 'yjs';
 import { emptySchema } from '@erd/model/schema';
+import { emptyDocContent, flattenDocContent } from '@erd/model/docContent';
+import type { DocContent } from '@erd/model/types';
 import {
   diffEntityList,
   diffRecord,
@@ -9,6 +11,7 @@ import {
   writeNote,
   writeRelationship,
   writeTable,
+  deepEqual,
   type Stamp,
 } from './codec';
 import { MODEL_VERSION, roots, type ProjectDoc } from './schema';
@@ -39,6 +42,27 @@ export function applyDiff(doc: Y.Doc, before: ProjectDoc, after: ProjectDoc, sta
   any = diffRecord(r.layout, before.layout, after.layout, writeLayout) || any;
   any = diffRecord(r.entityMeta, before.meta, after.meta, writeMeta) || any;
   any = diffEntityList(r.notes, before.notes, after.notes, writeNote, stamp) || any;
+  if (before.doc !== after.doc) any = diffDocContent(r.docContent, before.doc, after.doc) || any;
+  return any;
+}
+
+/** Formulário do documento: só as chaves achatadas que mudaram (ausente = vazio) */
+function diffDocContent(root: Y.Map<unknown>, before: DocContent | undefined, after: DocContent | undefined): boolean {
+  const prev = flattenDocContent(before ?? emptyDocContent());
+  const next = flattenDocContent(after ?? emptyDocContent());
+  let any = false;
+  for (const k of Object.keys(prev)) {
+    if (!(k in next) && root.has(k)) {
+      root.delete(k);
+      any = true;
+    }
+  }
+  for (const [k, v] of Object.entries(next)) {
+    if (k in prev && deepEqual(prev[k], v) && root.has(k)) continue;
+    if (deepEqual(root.get(k), v)) continue;
+    root.set(k, v);
+    any = true;
+  }
   return any;
 }
 

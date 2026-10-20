@@ -2,6 +2,7 @@ import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import type { Format, NoteBlock, Project } from './types';
 import { newId } from './naming';
 import { defaultView } from './project';
+import { normalizeDocContent } from './docContent';
 import { generateSql } from './formats/sql/generate';
 import { generatePrisma } from './formats/prisma/generate';
 import { generateDrizzle } from './formats/drizzle/generate';
@@ -43,6 +44,7 @@ export function normalizeProject(raw: Partial<Project>): Project {
     meta: raw.meta ?? {},
     notes: raw.notes ?? [],
     view: { ...defaultView(), ...(raw.view ?? {}) },
+    ...(raw.doc ? { doc: normalizeDocContent(raw.doc) } : {}),
   };
 }
 

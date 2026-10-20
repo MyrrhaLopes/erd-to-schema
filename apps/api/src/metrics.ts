@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { Deps } from './context';
+import { DRIVE_METRICS } from './drive/service';
 
 const http = { requests: 0, errors5xx: 0, rateLimited: 0 };
 export const httpMetrics = http;
@@ -10,8 +11,8 @@ export const httpMetrics = http;
  * O `server` fica na rede privada (o Caddy só repassa /api e /collab), então o endpoint não
  * é público; com `METRICS_TOKEN`, exige `Authorization: Bearer <token>` mesmo assim.
  */
-export function metricsRoutes(deps: Pick<Deps, 'env' | 'collab' | 'pool'>) {
-  return new Hono().get('/metrics', (c) => {
+export function metricsRoutes(deps: Pick<Deps, 'env' | 'collab' | 'pool' | 'drive'>) {
+  return new Hono().get('/metrics', async (c) => {
     const token = deps.env.METRICS_TOKEN;
     if (token && c.req.header('authorization') !== `Bearer ${token}`) return c.text('unauthorized', 401);
     const lines: string[] = [];
@@ -34,6 +35,13 @@ export function metricsRoutes(deps: Pick<Deps, 'env' | 'collab' | 'pool'>) {
         g('erd_sync_parses_total', 'Parses do sync bot por formato', p.count, `{format="${f}"}`);
         g('erd_sync_parse_ms_total', 'Tempo total de parse do sync bot (ms)', p.totalMs, `{format="${f}"}`);
       }
+    }
+    if (deps.drive) {
+      for (const [status, n] of Object.entries(DRIVE_METRICS.publish)) g('drive_publish_total', 'Publicações no Drive por resultado', n, `{status="${status}"}`);
+      g('drive_publish_seconds_total', 'Tempo total das publicações no Drive (s)', Math.round(DRIVE_METRICS.publishSecondsTotal * 1000) / 1000);
+      g('drive_publish_seconds_count', 'Publicações no Drive cronometradas', DRIVE_METRICS.publishCount);
+      g('drive_external_edits_total', 'Edições feitas pelo Drive detectadas', DRIVE_METRICS.externalEdits);
+      g('drive_pending_deletions', 'Arquivos antigos ainda por excluir no Drive', await deps.drive.pendingDeletionsCount().catch(() => 0));
     }
     g('erd_http_requests_total', 'Requisições HTTP na API', http.requests);
     g('erd_http_errors_5xx_total', 'Respostas 5xx', http.errors5xx);

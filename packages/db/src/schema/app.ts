@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bigint, bigserial, customType, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { bigint, bigserial, boolean, customType, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 import type { EmailPrefs, ProjectSettings } from '@erd/contracts';
 import { users } from './auth';
 
@@ -145,6 +145,8 @@ export const canvasVersions = pgTable(
     label: text('label').notNull(),
     state: bytea('state').notNull(),
     createdBy: text('created_by').references(() => users.id),
+    /** Versão de uma publicação no Drive: não conta no limite, não é podada nem apagada */
+    protected: boolean('protected').notNull().default(false),
     createdAt: created(),
   },
   (t) => [index('canvas_versions_canvas_idx').on(t.canvasId, t.createdAt)],
@@ -183,6 +185,93 @@ export const userSettings = pgTable('user_settings', {
   userId: text('user_id')
     .primaryKey()
     .references(() => users.id, { onDelete: 'cascade' }),
-  emailPrefs: jsonb('email_prefs').$type<EmailPrefs>().notNull().default({ accessRequests: true, decisions: true, membership: true }),
+  emailPrefs: jsonb('email_prefs').$type<EmailPrefs>().notNull().default({ accessRequests: true, decisions: true, membership: true, drive: true }),
   updatedAt: ts('updated_at').notNull().defaultNow(),
+});
+
+/* ------------------------------------------------------------------ */
+/* Documento Word no Google Drive (docs/drive-docx-plan.md §7)          */
+/* Só metadados: nenhuma tabela guarda bytes do .docx.                  */
+/* ------------------------------------------------------------------ */
+
+/** Um vínculo por canvas: onde o documento está publicado */
+export const driveBindings = pgTable('drive_bindings', {
+  canvasId: text('canvas_id')
+    .primaryKey()
+    .references(() => canvases.id, { onDelete: 'cascade' }),
+  projectId: text('project_id')
+    .notNull()
+    .references(() => projects.id, { onDelete: 'cascade' }),
+  /** Dono do arquivo no Drive (cujo token é usado) */
+  connectedUserId: text('connected_user_id').references(() => users.id, { onDelete: 'set null' }),
+  folderId: text('folder_id').notNull(),
+  folderName: text('folder_name').notNull(),
+  folderPath: text('folder_path'),
+  fileId: text('file_id'),
+  fileName: text('file_name'),
+  webViewLink: text('web_view_link'),
+  lastRevisionId: text('last_revision_id'),
+  lastMd5: text('last_md5'),
+  lastContentHash: text('last_content_hash'),
+  lastVersion: integer('last_version').notNull().default(0),
+  /** none | locked | pending */
+  lock: text('lock').notNull().default('none'),
+  /** active | needs_reconnect | needs_folder | transfer_pending | paused */
+  status: text('status').notNull().default('active'),
+  /** Última anomalia avisada (para não repetir o aviso a cada auditoria) */
+  anomaly: text('anomaly'),
+  /** Fase 4: publicar ao salvar uma versão nomeada (sem a tela de revisão) */
+  autoPublish: boolean('auto_publish').notNull().default(false),
+  createdAt: created(),
+  updatedAt: ts('updated_at').notNull().defaultNow(),
+});
+
+/** Append-only: cada publicação, troca de pasta ou evento observado no Drive */
+export const drivePublications = pgTable(
+  'drive_publications',
+  {
+    id: text('id').primaryKey(),
+    canvasId: text('canvas_id')
+      .notNull()
+      .references(() => canvases.id, { onDelete: 'cascade' }),
+    /** published | unchanged | failed | folder_changed | recreated | external_edit_detected | moved_externally | relocked | disconnected | owner_transferred */
+    action: text('action').notNull(),
+    /** "versão N" da capa (só em published) */
+    version: integer('version'),
+    revertedFrom: integer('reverted_from'),
+    canvasVersionId: text('canvas_version_id').references(() => canvasVersions.id, { onDelete: 'set null' }),
+    /** Quem pediu no app (null = job automático) */
+    requestedBy: text('requested_by').references(() => users.id, { onDelete: 'set null' }),
+    fileId: text('file_id'),
+    driveRevisionId: text('drive_revision_id'),
+    md5: text('md5'),
+    sizeBytes: integer('size_bytes'),
+    contentHash: text('content_hash'),
+    folderId: text('folder_id'),
+    folderName: text('folder_name'),
+    previousFolderId: text('previous_folder_id'),
+    previousFolderName: text('previous_folder_name'),
+    previousFileId: text('previous_file_id'),
+    oldFileDeletedAt: ts('old_file_deleted_at'),
+    /** `lastModifyingUser` do Drive, quando alguém editou por fora */
+    externalActor: jsonb('external_actor').$type<{ name?: string; email?: string }>(),
+    error: text('error'),
+    createdAt: created(),
+  },
+  (t) => [index('drive_publications_canvas_idx').on(t.canvasId, t.createdAt)],
+);
+
+/** Arquivos a excluir definitivamente, com retentativa e o token de quem usar */
+export const drivePendingDeletions = pgTable('drive_pending_deletions', {
+  fileId: text('file_id').primaryKey(),
+  canvasId: text('canvas_id').notNull(),
+  tokenUserId: text('token_user_id').references(() => users.id, { onDelete: 'set null' }),
+  folderId: text('folder_id'),
+  folderName: text('folder_name'),
+  attempts: integer('attempts').notNull().default(0),
+  lastError: text('last_error'),
+  nextAttemptAt: ts('next_attempt_at').notNull().defaultNow(),
+  /** Passou do limite de 24 h: a interface pede a exclusão manual */
+  gaveUpAt: ts('gave_up_at'),
+  createdAt: created(),
 });

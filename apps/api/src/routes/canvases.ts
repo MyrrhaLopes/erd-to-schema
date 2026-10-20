@@ -4,6 +4,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { and, auditLog, canvases, canvasVersions, count, desc, eq, isNull, users } from '@erd/db';
+import { requestPublish } from './drive';
 import { CreateVersionZ, type Version } from '@erd/contracts';
 import * as Y from 'yjs';
 import { SignJWT } from 'jose';
@@ -112,13 +113,19 @@ export function canvasesRoutes(deps: Deps) {
         const user = requireUser(c.get('user'));
         const a = await canvasAccess(db, c.req.param('id'), user.id);
         const rows = await db
-          .select({ id: canvasVersions.id, label: canvasVersions.label, createdAt: canvasVersions.createdAt, byId: users.id, byName: users.name })
+          .select({ id: canvasVersions.id, label: canvasVersions.label, createdAt: canvasVersions.createdAt, byId: users.id, byName: users.name, protected: canvasVersions.protected })
           .from(canvasVersions)
           .leftJoin(users, eq(users.id, canvasVersions.createdBy))
           .where(eq(canvasVersions.canvasId, a.canvas.id))
           .orderBy(desc(canvasVersions.createdAt))
           .limit(200);
-        const out: Version[] = rows.map((r) => ({ id: r.id, label: r.label, createdAt: r.createdAt.toISOString(), createdBy: r.byId ? { id: r.byId, name: r.byName ?? '' } : null }));
+        const out: Version[] = rows.map((r) => ({
+          id: r.id,
+          label: r.label,
+          createdAt: r.createdAt.toISOString(),
+          createdBy: r.byId ? { id: r.byId, name: r.byName ?? '' } : null,
+          protected: r.protected,
+        }));
         return c.json(out);
       })
 
@@ -126,14 +133,26 @@ export function canvasesRoutes(deps: Deps) {
         const user = requireUser(c.get('user'));
         const a = await canvasAccess(db, c.req.param('id'), user.id);
         requireCan(a, 'edit');
-        const [n] = await db.select({ n: count() }).from(canvasVersions).where(eq(canvasVersions.canvasId, a.canvas.id));
+        // as versões de publicação no Drive não contam no limite
+        const [n] = await db
+          .select({ n: count() })
+          .from(canvasVersions)
+          .where(and(eq(canvasVersions.canvasId, a.canvas.id), eq(canvasVersions.protected, false)));
         if ((n?.n ?? 0) >= deps.env.MAX_VERSIONS_PER_CANVAS) throw new HTTPException(422, { message: 'Limite de versões deste canvas atingido. Apague versões antigas.' });
         const state = await deps.writer.read(a.canvas.id);
         if (!state) throw new HTTPException(409, { message: 'O canvas ainda está vazio' });
         const { label } = c.req.valid('json');
         const id = await deps.store.createVersion(a.canvas.id, label, state, user.id);
         await db.insert(auditLog).values({ projectId: a.project.id, actorId: user.id, action: 'version.created', payload: { canvasId: a.canvas.id, versionId: id, label } });
-        return c.json({ id }, 201);
+        // fase 4: "publicar ao salvar uma versão nomeada" (desligado por padrão; sem a tela de revisão)
+        let published: Awaited<ReturnType<typeof requestPublish>> | null = null;
+        const binding = deps.drive ? await deps.drive.binding(a.canvas.id) : null;
+        if (binding?.autoPublish && binding.status !== 'paused' && binding.status !== 'needs_folder')
+          published = await requestPublish(deps, a.canvas.id, a.project.name, user.id, {}).catch((err) => {
+            deps.log.warn({ err, canvasId: a.canvas.id }, 'publicação automática não saiu');
+            return null;
+          });
+        return c.json({ id, published }, 201);
       })
 
       /** Estado de uma versão: o cliente calcula o diff contra o documento atual e aplica como uma edição normal (desfazível) */
@@ -161,6 +180,8 @@ export function canvasesRoutes(deps: Deps) {
         const user = requireUser(c.get('user'));
         const a = await canvasAccess(db, c.req.param('id'), user.id);
         requireCan(a, 'manageCanvases');
+        const [v] = await db.select({ protected: canvasVersions.protected }).from(canvasVersions).where(and(eq(canvasVersions.id, c.req.param('vid')), eq(canvasVersions.canvasId, a.canvas.id)));
+        if (v?.protected) throw new HTTPException(422, { message: 'Versões de publicação no Drive não podem ser apagadas: é por elas que dá para reverter o documento.' });
         await db.delete(canvasVersions).where(and(eq(canvasVersions.id, c.req.param('vid')), eq(canvasVersions.canvasId, a.canvas.id)));
         return c.json({ ok: true });
       })

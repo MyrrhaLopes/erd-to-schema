@@ -5,7 +5,7 @@ import { EmailPrefsZ, type EmailPrefs } from '@erd/contracts';
 import { enabledProviders } from '../auth';
 import { requireUser, type AppEnv, type Deps } from '../context';
 
-const DEFAULT_PREFS: EmailPrefs = { accessRequests: true, decisions: true, membership: true };
+const DEFAULT_PREFS: EmailPrefs = { accessRequests: true, decisions: true, membership: true, drive: true };
 
 export async function emailPrefs(deps: Pick<Deps, 'db'>, userId: string): Promise<EmailPrefs> {
   const [row] = await deps.db.select().from(userSettings).where(eq(userSettings.userId, userId));

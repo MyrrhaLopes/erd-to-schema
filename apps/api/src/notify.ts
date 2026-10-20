@@ -5,7 +5,7 @@ import type { Deps } from './context';
 import type { EmailJob } from './mailQueue';
 import { emailPrefs } from './routes/me';
 
-export type NotificationType = 'access-request' | 'access-decision' | 'member-added' | 'role-changed' | 'member-removed';
+export type NotificationType = 'access-request' | 'access-decision' | 'member-added' | 'role-changed' | 'member-removed' | 'project-transferred' | 'drive-alert';
 
 /** Notificações in-app (sininho + badge) */
 export async function notify(deps: Pick<Deps, 'db'>, userIds: string[], type: NotificationType, payload: Record<string, unknown>) {

@@ -5,7 +5,8 @@ import { REF_ACTIONS } from '@erd/model/types';
 import { formatType, parseTypeString } from '@erd/model/columnType';
 import { newId } from '@erd/model/naming';
 import { columnById, relCardinality, tableById } from '@erd/model/schema';
-import { autoTags, effectiveTags } from '@erd/model/tags';
+import { allTags, autoTags, effectiveTags } from '@erd/model/tags';
+import { isModuleTag } from '@erd/docx/modules';
 import { useProjectStore } from '../store/useProjectStore';
 import { useUi, revealTableInCode } from '../store/useUi';
 import {
@@ -141,12 +142,27 @@ function TagEditor({ id }: { id: Id }) {
         className="mt-1.5 flex gap-1"
         onSubmit={(e) => {
           e.preventDefault();
-          const t = draft.trim().toLowerCase().replace(/\s+/g, '-');
+          // tags de módulo ("Módulo A — Cadastro") ficam como foram escritas: viram título no documento Word
+          const raw = draft.trim().replace(/\s+/g, ' ');
+          const t = isModuleTag(raw) ? raw : raw.toLowerCase().replace(/\s+/g, '-');
           if (t) setTags(id, [...new Set([...manual, t])], suppressed.filter((x) => x !== t));
           setDraft('');
         }}
       >
-        <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="nova tag (ex.: core, audit)" className="w-full rounded border border-slate-200 px-1.5 py-1 text-[12px] outline-none focus:border-indigo-400" />
+        <input
+          value={draft}
+          list="erd-module-tags"
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="nova tag (ex.: core, Módulo A — Cadastro)"
+          className="w-full rounded border border-slate-200 px-1.5 py-1 text-[12px] outline-none focus:border-indigo-400"
+        />
+        <datalist id="erd-module-tags">
+          {allTags(project)
+            .filter(isModuleTag)
+            .map((t) => (
+              <option key={t} value={t} />
+            ))}
+        </datalist>
         <button className="rounded bg-slate-100 px-2 text-[11px] text-slate-600 hover:bg-slate-200">+</button>
       </form>
     </div>

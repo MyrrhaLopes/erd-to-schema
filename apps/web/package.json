@@ -25,6 +25,7 @@
     "@erd/canvas-kinds": "workspace:*",
     "@erd/contracts": "workspace:*",
     "@erd/crdt": "workspace:*",
+    "@erd/docx": "workspace:*",
     "@erd/model": "workspace:*",
     "@erd/sync": "workspace:*",
     "@hocuspocus/provider": "^4.7.1",

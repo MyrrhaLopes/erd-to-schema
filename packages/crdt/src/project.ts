@@ -1,11 +1,12 @@
 import * as Y from 'yjs';
 import type { EntityMeta, EnumType, Id, LayoutEntry, NoteBlock, Relationship, SchemaModel, Table } from '@erd/model/types';
 import { placeNewEntities } from '@erd/model/project';
+import { unflattenDocContent } from '@erd/model/docContent';
 import { sanitizeSchema } from '@erd/model/schema';
 import { deepEqual, readEnum, readLayout, readMeta, readNote, readRelationship, readTable } from './codec';
 import { byOrder } from './order';
 import { MODEL_ROOTS, roots, type ModelRoot, type ProjectDoc, type YEntity } from './schema';
-import { EntityMetaZ, EnumZ, LayoutZ, NoteZ, RelationshipZ, TableZ, check } from './validate';
+import { DocFieldZ, EntityMetaZ, EnumZ, LayoutZ, NoteZ, RelationshipZ, TableZ, check } from './validate';
 
 type Dirty = Map<ModelRoot, Set<Id> | 'all'>;
 
@@ -75,7 +76,7 @@ export class Projector {
         const set = cur ?? new Set<Id>();
         if (entityKey !== null) set.add(entityKey);
         else for (const k of keys) if (k !== null) set.add(k);
-        if (root === 'meta') dirty.set(root, 'all');
+        if (root === 'meta' || root === 'docContent') dirty.set(root, 'all');
         else dirty.set(root, set);
         return;
       }
@@ -157,9 +158,25 @@ export class Projector {
     const meta = prev && !metaChanged ? prev.meta : Object.fromEntries(c.entityMeta);
     const nameRaw = roots(this.doc).meta.get('name');
     const name = typeof nameRaw === 'string' ? nameRaw : 'Projeto';
-    if (prev && prev.name === name && prev.schema === schema && prev.layout === layout && prev.meta === meta && prev.notes === notes) return prev;
-    return { name, schema, layout, meta, notes };
+    let content = prev?.doc;
+    if (!prev || dirty.has('docContent')) {
+      content = readDocContent(this.doc);
+      if (prev?.doc && content && deepEqual(content, prev.doc)) content = prev.doc;
+    }
+    if (prev && prev.name === name && prev.schema === schema && prev.layout === layout && prev.meta === meta && prev.notes === notes && prev.doc === content) return prev;
+    const out: ProjectDoc = { name, schema, layout, meta, notes };
+    if (content) out.doc = content;
+    return out;
   }
+}
+
+/** Formulário do documento (raiz `doc`), ou `undefined` quando ninguém preencheu nada */
+export function readDocContent(doc: Y.Doc) {
+  const root = roots(doc).docContent;
+  if (!root.size) return undefined;
+  const flat: Record<string, unknown> = {};
+  for (const [k, v] of root.entries()) if (DocFieldZ.safeParse({ key: k, value: v }).success) flat[k] = v;
+  return unflattenDocContent(flat);
 }
 
 function sameArray<T>(a: readonly T[], b: readonly T[]) {
@@ -195,5 +212,6 @@ export function invalidEntities(doc: Y.Doc): string[] {
   scan('layout', (y) => quiet(LayoutZ, readLayout(y)));
   scan('entityMeta', (y) => quiet(EntityMetaZ, readMeta(y)));
   scan('notes', (y, id) => quiet(NoteZ, readNote(y, id)));
+  for (const [k, v] of r.docContent.entries()) if (!DocFieldZ.safeParse({ key: k, value: v }).success) bad.push(`doc:${k}`);
   return bad;
 }
