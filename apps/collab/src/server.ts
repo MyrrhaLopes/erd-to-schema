@@ -312,7 +312,21 @@ export function createCollab(o: CollabOptions) {
     },
 
     /** Mudança de papel (§3): avisa as conexões abertas; sem papel, fecha a conexão */
-    permissionChanged(e: PermissionChanged) {
+    async permissionChanged(e: PermissionChanged) {
+      // `*`: algo do projeto inteiro mudou (link de visualização desligado): reavalia cada conexão
+      if (e.userId === '*') {
+        if (!o.currentRole) return;
+        const seen = new Set<string>();
+        for (const d of hocuspocus.documents.values())
+          for (const c of d.connections.keys()) {
+            const ctx = c.context as CollabContext;
+            if (ctx?.projectId !== e.projectId || seen.has(ctx.user.id)) continue;
+            seen.add(ctx.user.id);
+            const role = await o.currentRole(e.projectId, ctx.user.id);
+            if (role !== ctx.user.role) await this.permissionChanged({ projectId: e.projectId, userId: ctx.user.id, role });
+          }
+        return;
+      }
       for (const c of connectionsOf(e.projectId, e.userId)) {
         c.sendStateless(JSON.stringify({ type: 'permission-changed', role: e.role }));
         if (e.role === null) c.close({ code: 4403, reason: 'acesso removido' } as CloseEvent);

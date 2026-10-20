@@ -6,6 +6,7 @@ import { createPgEvents } from './events';
 import type { Env } from './env';
 import { createLogger, type Logger } from './log';
 import { createMailer, type Mailer } from './mailer';
+import { BossMailQueue, InlineMailQueue } from './mailQueue';
 
 /** Escrita direto no log do banco (sem servidor de colaboração carregado) */
 export function storeWriter(store: CanvasStore): CanvasWriter {
@@ -30,6 +31,8 @@ export function createDeps(env: Env, overrides: DepsOptions = {}): Deps {
   const { db, pool } = overrides.db && overrides.pool ? { db: overrides.db, pool: overrides.pool } : createDb(env.DATABASE_URL);
   const mailer = overrides.mailer ?? createMailer(env, log);
   const auth = overrides.auth ?? createAuth({ db, env, mailer, log });
+  const mail =
+    overrides.mail ?? (env.NODE_ENV === 'test' ? new InlineMailQueue(mailer, log) : new BossMailQueue(env.DATABASE_URL, mailer, log.child({ component: 'mail' })));
   const store = overrides.store ?? new CanvasStore(db);
   const pgEvents = createPgEvents(pool, log);
   const collab =
@@ -43,6 +46,7 @@ export function createDeps(env: Env, overrides: DepsOptions = {}): Deps {
     env,
     auth,
     mailer,
+    mail,
     log,
     store,
     writer: overrides.writer ?? collab?.writer ?? storeWriter(store),
@@ -54,5 +58,5 @@ export function createDeps(env: Env, overrides: DepsOptions = {}): Deps {
 /** Ouve os eventos de permissão e repassa ao servidor de colaboração deste processo */
 export async function wirePermissionEvents(deps: Deps) {
   if (!deps.collab) return async () => {};
-  return createPgEvents(deps.pool, deps.log).subscribe((e) => deps.collab!.permissionChanged(e));
+  return createPgEvents(deps.pool, deps.log).subscribe((e) => void deps.collab!.permissionChanged(e));
 }

@@ -20,6 +20,8 @@ server.on('error', (e: NodeJS.ErrnoException) => {
 // o WebSocket do Hocuspocus usa o mesmo servidor HTTP (§6.2): /collab
 deps.collab?.attach(server as unknown as import('node:http').Server);
 const unlisten = await wirePermissionEvents(deps);
+// a fila de e-mails roda no mesmo processo (um worker pg-boss)
+await deps.mail.start();
 
 installShutdown(
   deps.log,
@@ -29,6 +31,8 @@ installShutdown(
     // 2. grava os documentos pendentes e fecha os WebSockets com "reconecte"
     { name: 'collab', run: async () => deps.collab?.shutdown() },
     { name: 'events', run: () => unlisten() },
+    // termina os e-mails em envio; os pendentes ficam no banco para o próximo container
+    { name: 'mail', run: () => deps.mail.stop() },
     // 3. fecha o pool do Postgres
     { name: 'postgres', run: () => deps.pool.end() },
   ],

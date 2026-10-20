@@ -118,6 +118,6 @@ export const StatelessZ = z.discriminatedUnion('type', [
 ]);
 export type Stateless = z.infer<typeof StatelessZ>;
 
-/** Evento publicado pela API quando um papel muda (Postgres LISTEN/NOTIFY ou Redis) */
+/** Evento publicado pela API quando um papel muda (Postgres LISTEN/NOTIFY ou Redis); `userId: '*'` reavalia todos do projeto */
 export const PermissionChangedZ = z.object({ projectId: z.string(), userId: z.string(), role: RoleZ.nullable() });
 export type PermissionChanged = z.infer<typeof PermissionChangedZ>;

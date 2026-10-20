@@ -1,4 +1,5 @@
-import { Eraser, Hand, MousePointer2, Spline, StickyNote, Table2 } from 'lucide-react';
+import { useEffect } from 'react';
+import { Eraser, Eye, Hand, MousePointer2, Spline, StickyNote, Table2 } from 'lucide-react';
 import type { Tool } from '@erd/model/types';
 import { useProjectStore } from '../store/useProjectStore';
 import { useUi, type RelationMode } from '../store/useUi';
@@ -23,10 +24,16 @@ export function Toolbar() {
   const setTool = useProjectStore((s) => s.setTool);
   const mode = useUi((s) => s.relationMode);
   const set = useUi((s) => s.set);
+  const readOnly = useProjectStore((s) => s.readOnly);
+  // virou leitor com uma ferramenta de edição ativa: volta para a seleção
+  useEffect(() => {
+    if (readOnly && tool !== 'select' && tool !== 'hand') setTool('select');
+  }, [readOnly, tool, setTool]);
+  const tools = readOnly ? TOOLS.filter((t) => t.tool === 'select' || t.tool === 'hand') : TOOLS;
 
   return (
     <div className="absolute left-1/2 top-3 z-20 flex -translate-x-1/2 items-center gap-1 rounded-xl border border-slate-200 bg-white/95 p-1 shadow-md backdrop-blur">
-      {TOOLS.map(({ tool: t, icon: Icon, label, key }, i) => (
+      {tools.map(({ tool: t, icon: Icon, label, key }, i) => (
         <button
           key={t}
           title={`${label} — ${key}`}
@@ -43,7 +50,12 @@ export function Toolbar() {
           <span className="absolute bottom-0.5 right-1 text-[8px] text-slate-400">{t === 'hand' ? 'H' : t === 'eraser' ? 0 : i === 0 ? 1 : i}</span>
         </button>
       ))}
-      {tool === 'relation' && (
+      {readOnly && (
+        <span className="flex items-center gap-1 px-2 text-[11px] text-slate-500" data-testid="toolbar-readonly">
+          <Eye size={13} /> Somente visualização
+        </span>
+      )}
+      {tool === 'relation' && !readOnly && (
         <>
           <div className="mx-1 h-6 w-px bg-slate-200" />
           <div className="flex items-center gap-0.5" title="Tipo de relação criada ao conectar">

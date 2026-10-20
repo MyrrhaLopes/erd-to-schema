@@ -7,6 +7,7 @@ import type { Auth, SessionUser } from './auth';
 import type { Env } from './env';
 import type { Logger } from './log';
 import type { Mailer } from './mailer';
+import type { MailQueue } from './mailQueue';
 
 /** Eventos para fora da requisição (mudança de papel → servidor de colaboração; e-mails → fila) */
 export interface Events {
@@ -26,6 +27,8 @@ export interface Deps {
   env: Env;
   auth: Auth;
   mailer: Mailer;
+  /** E-mails assíncronos com retentativa (pg-boss) */
+  mail: MailQueue;
   log: Logger;
   store: CanvasStore;
   writer: CanvasWriter;

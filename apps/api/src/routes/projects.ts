@@ -154,6 +154,9 @@ export function projectsRoutes(deps: Deps) {
       }
       await db.update(projects).set(patch).where(eq(projects.id, a.project.id));
       await db.insert(auditLog).values({ projectId: a.project.id, actorId: user.id, action: 'project.updated', payload: body });
+      // desligar o link derruba na hora quem entrou só por ele
+      if (body.settings?.linkSharing === 'off' && a.settings.linkSharing === 'view')
+        await deps.events.permissionChanged({ projectId: a.project.id, userId: '*', role: null });
       return c.json({ ok: true });
     })
 

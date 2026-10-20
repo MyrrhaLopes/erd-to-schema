@@ -150,6 +150,26 @@ describe('tempo real', () => {
     await until(() => b.events.stateless.some((s) => s.includes('"permission-changed"') && s.includes('editor')));
   });
 
+  it('desligar o link de visualização derruba quem entrou só pelo link; aprovar um pedido avisa a conexão aberta', async () => {
+    const { ana, projectId, canvasId } = await setup();
+    const curioso = await h.signup(`Curioso${Date.now() % 100000}`);
+    await ana.json(`/api/projects/${projectId}`, { method: 'PATCH', json: { settings: { linkSharing: 'view' } } });
+    const c = await connect(curioso, canvasId);
+    await synced(c.provider);
+    // pede edição e é aprovado: o aviso chega pela conexão aberta
+    const r = await curioso.json<{ id: string }>(`/api/projects/${projectId}/access-requests`, { method: 'POST', json: {} });
+    await ana.json(`/api/access-requests/${r.body.id}/approve`, { method: 'POST' });
+    await until(() => c.events.stateless.some((s) => s.includes('"permission-changed"') && s.includes('editor')));
+
+    const outro = await h.signup(`Outro${Date.now() % 100000}`);
+    const o = await connect(outro, canvasId);
+    await synced(o.provider);
+    await ana.json(`/api/projects/${projectId}`, { method: 'PATCH', json: { settings: { linkSharing: 'off' } } });
+    await until(() => o.events.stateless.some((s) => s.includes('"permission-changed"') && s.includes('null')));
+    // o membro aprovado continua
+    expect(c.events.stateless.some((s) => s.includes('null'))).toBe(false);
+  });
+
   it('a compactação e o descarregamento preservam o estado', async () => {
     const { ana, canvasId } = await setup();
     const a = await connect(ana, canvasId);

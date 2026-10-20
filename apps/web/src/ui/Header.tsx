@@ -13,8 +13,12 @@ import {
   NotebookText,
   PanelRight,
   Redo2,
+  Settings,
+  Share2,
   Undo2,
 } from 'lucide-react';
+import { NotificationsBell } from './Notifications';
+import { ShareDialog } from './sharing';
 import { useProjectStore, getProject, undo, redo } from '../store/useProjectStore';
 import { useUi, showToast } from '../store/useUi';
 import { allTags } from '@erd/model/tags';
@@ -149,6 +153,7 @@ export function Header() {
   const project = useEditorContext((s) => s.project);
   const shownName = mode === 'remote' && project ? project.name : name;
   const [draftName, setDraftName] = useState(shownName);
+  const [sharing, setSharing] = useState(false);
   const editingName = useRef(false);
   useEffect(() => {
     if (!editingName.current) setDraftName(shownName);
@@ -259,15 +264,17 @@ export function Header() {
                 <div className="my-1 border-t border-slate-100" />
               </>
             )}
-            <MenuItem
-              hint=".zip .json .sql .prisma .ts .md"
-              onClick={() => {
-                close();
-                void openFile();
-              }}
-            >
-              Abrir / importar…
-            </MenuItem>
+            {!readOnly && (
+              <MenuItem
+                hint=".zip .json .sql .prisma .ts .md"
+                onClick={() => {
+                  close();
+                  void openFile();
+                }}
+              >
+                Abrir / importar…
+              </MenuItem>
+            )}
             <MenuItem
               hint=".zip"
               onClick={() => {
@@ -314,19 +321,37 @@ export function Header() {
       >
         <NotebookText size={15} /> Notas .md
       </HeaderButton>
-      <HeaderButton
-        title="Organizar automaticamente (tabelas mãe à esquerda)"
-        onClick={() =>
-          commit((d) => {
-            autoLayout(d as never);
-          }, 'canvas')
-        }
-      >
-        <LayoutGrid size={15} /> Organizar
-      </HeaderButton>
+      {!readOnly && (
+        <HeaderButton
+          title="Organizar automaticamente (tabelas mãe à esquerda)"
+          onClick={() =>
+            commit((d) => {
+              autoLayout(d as never);
+            }, 'canvas')
+          }
+        >
+          <LayoutGrid size={15} /> Organizar
+        </HeaderButton>
+      )}
 
       <div className="ml-auto flex items-center gap-1">
         <ConnectionBadge />
+        {mode === 'remote' && project && (
+          <>
+            <NotificationsBell />
+            <Link to="/p/$projectId/settings" params={{ projectId: project.id }} title="Configurações do projeto" className="rounded p-1.5 text-slate-500 hover:bg-slate-100" data-testid="project-settings">
+              <Settings size={16} />
+            </Link>
+            <button
+              onClick={() => setSharing(true)}
+              className="mx-1 flex h-8 items-center gap-1.5 rounded-md bg-indigo-600 px-3 text-[12.5px] font-medium text-white hover:bg-indigo-700"
+              data-testid="share"
+            >
+              <Share2 size={14} /> Compartilhar
+            </button>
+            {sharing && <ShareDialog project={project} onClose={() => setSharing(false)} />}
+          </>
+        )}
         <button title="Desfazer (Ctrl+Z)" disabled={!canUndo} onClick={undo} className="rounded p-1.5 text-slate-600 hover:bg-slate-100 disabled:opacity-30">
           <Undo2 size={16} />
         </button>

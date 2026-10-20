@@ -15,6 +15,7 @@ import { showToast } from '../store/useUi';
 import { ApiError } from '../api/client';
 import { useEditorContext } from '../store/useEditorContext';
 import type { Session } from '../collab/session';
+import { ViewModeBanner } from '../ui/sharing';
 
 /** Abre uma sessão de canvas enquanto o componente está montado (e fecha ao trocar de rota) */
 function useCanvasSession(open: (() => Promise<Session>) | null, deps: unknown[]) {
@@ -116,7 +117,7 @@ export function CanvasEditor() {
   );
 
   if (project.error && !(project.error instanceof ApiError && project.error.status === 404)) return <Editor error={(project.error as Error).message} />;
-  return <Editor error={error} tabs={p ? <CanvasTabs project={p} canvasId={canvasId} /> : null} />;
+  return <Editor error={error} tabs={p ? <CanvasTabs project={p} canvasId={canvasId} /> : null} banner={p && p.role === 'viewer' ? <ViewModeBanner project={p} /> : null} />;
 }
 
 export function ProjectRedirect() {

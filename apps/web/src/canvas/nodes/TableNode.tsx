@@ -5,6 +5,7 @@ import type { Column, Table } from '@erd/model/types';
 import { formatType, parseTypeString, COMMON_TYPES } from '@erd/model/columnType';
 import { addColumn, resizeNode, updateTable } from '../../store/actions';
 import { useUi, revealTableInCode } from '../../store/useUi';
+import { useProjectStore } from '../../store/useProjectStore';
 
 export type TableNodeData = {
   table: Table;
@@ -120,6 +121,7 @@ function ColumnRow({ table, col, isFk }: { table: Table; col: Column; isFk: bool
 function TableNodeImpl({ id, data, selected }: NodeProps<TableFlowNode>) {
   const { table, fkCols, tags, relationTarget } = data;
   const editing = useUi((s) => s.editing);
+  const readOnly = useProjectStore((s) => s.readOnly);
   const editName = editing?.kind === 'table-name' && editing.id === id;
   const fk = new Set(fkCols);
 
@@ -138,7 +140,7 @@ function TableNodeImpl({ id, data, selected }: NodeProps<TableFlowNode>) {
     >
       {/* fora do cabeçalho (que tem `relative`) para ancorar no topo/base do card inteiro, não só do cabeçalho */}
       <Handle type="source" id={`${id}-hT`} position={Position.Top} className="erd-handle erd-handle-head" title="Relação-nota (topo)" />
-      {selected && (
+      {selected && !readOnly && (
         <NodeResizeControl
           minWidth={180}
           position="right"
@@ -184,7 +186,7 @@ function TableNodeImpl({ id, data, selected }: NodeProps<TableFlowNode>) {
         ))}
         {table.columns.length === 0 && <div className="px-3 py-1 text-[11px] italic text-slate-400">sem colunas</div>}
       </div>
-      {selected && (
+      {selected && !readOnly && (
         <button
           className="erd-export-hide nodrag flex w-full items-center justify-center gap-1 rounded-b-lg border-t border-slate-100 py-1 text-[11px] text-slate-500 hover:bg-indigo-50 hover:text-indigo-600"
           onClick={(e) => {

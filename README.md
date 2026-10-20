@@ -66,6 +66,17 @@ Daí em diante: PR → CI verde → merge → deploy automático. Migrações se
 - **Projeto `.zip`** com `project.json`, `notes/*.md`, `schema.sql`, `schema.prisma` e `schema.ts`. Ao reimportar, os `.md` são a fonte da verdade, e `.md` novos viram notas novas. O app também importa `.sql`, `.prisma`, `.ts` e `.md` soltos.
 - **Autosave** em IndexedDB e undo/redo global.
 
+### Na nuvem: projetos, compartilhamento e tempo real
+
+- **Contas** com e-mail e senha (verificação e redefinição por e-mail) e, se configurado, GitHub/Google.
+- **Projetos** com vários canvases; edição em tempo real (Yjs + Hocuspocus), cópia local para abrir rápido e continuar offline.
+- **Compartilhar** (botão no topo do editor): por e-mail, como **editor** ou **leitor**. Quem já tem conta entra direto; quem não tem recebe um convite por e-mail (link de uso único, 7 dias, só vale para aquele endereço). Limite de convites por hora (`INVITES_PER_HOUR`).
+- **Papéis** (`packages/contracts/src/permissions.ts`, uma regra só usada pela API, pelo collab e pela interface): o dono faz tudo; editores editam, renomeiam e criam canvases (e compartilham, se o dono ligar "Editores podem compartilhar"); leitores veem, exportam e aparecem na presença.
+- **Modo visualização:** o leitor vê uma faixa "Você está no modo visualização", com o botão **Pedir acesso de edição** (com mensagem opcional). O dono recebe no sininho e por e-mail; ao aprovar (em **Configurações do projeto**), o leitor vira editor **sem recarregar a página**.
+- **Link de visualização:** opcionalmente, qualquer pessoa logada com o link vê o projeto como leitor. Desligar o link derruba na hora quem entrou só por ele.
+- **Notificações:** sininho in-app (pedidos, decisões, convites, papel alterado) e e-mails desligáveis em **Configurações da conta** (`/settings`). Os e-mails saem por uma fila **pg-boss** no próprio Postgres, com retentativa e backoff; a requisição não espera o envio.
+- **Mudança de papel ao vivo:** a API publica o evento (Postgres `LISTEN/NOTIFY`) e o servidor de colaboração rebaixa, promove ou desconecta as conexões abertas.
+
 ### Atalhos (estilo Excalidraw/Eraser)
 
 | Tecla | Ação |

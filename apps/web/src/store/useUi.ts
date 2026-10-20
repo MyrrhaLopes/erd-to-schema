@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Format, Id } from '@erd/model/types';
+import { useProjectStore } from './useProjectStore';
 
 export type RelationMode = 'fk' | 'note' | 'nn';
 
@@ -37,7 +38,8 @@ export const useUi = create<UiState>((set) => ({
   toast: null,
   jumpToTable: null,
   selectionRequest: null,
-  set: (p) => set(p),
+  // no modo visualização nada entra em edição inline (a API e o collab recusariam de qualquer forma)
+  set: (p) => set(p.editing && useProjectStore.getState().readOnly ? { ...p, editing: null } : p),
 }));
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined;

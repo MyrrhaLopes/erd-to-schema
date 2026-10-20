@@ -595,6 +595,7 @@ export function Inspector() {
   const edges = useUi((s) => s.selectedEdges);
   const doc = useProjectStore((s) => s.doc);
   const [collapsed, setCollapsed] = useState(false);
+  const readOnly = useProjectStore((s) => s.readOnly);
   const total = nodes.length + edges.length;
   if (!total) return null;
 
@@ -631,7 +632,12 @@ export function Inspector() {
         {title}
         {collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
       </button>
-      {!collapsed && <div className="overflow-y-auto px-3 pb-3">{body}</div>}
+      {!collapsed && (
+        // no modo visualização o inspetor só mostra (fieldset desabilita todos os campos e botões)
+        <fieldset disabled={readOnly} className="min-w-0 overflow-y-auto px-3 pb-3 disabled:opacity-80">
+          {body}
+        </fieldset>
+      )}
     </div>
   );
 }

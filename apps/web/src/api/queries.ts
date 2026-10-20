@@ -22,3 +22,27 @@ export function useProjects(filter: 'mine' | 'shared' | 'all') {
 export function useProject(id: string) {
   return useQuery({ queryKey: keys.project(id), queryFn: () => ok(api.projects[':id'].$get({ param: { id } })) });
 }
+
+export const sharingKeys = {
+  members: (id: string) => ['members', id] as const,
+  requests: (id: string) => ['access-requests', id] as const,
+  notifications: ['notifications'] as const,
+  settings: ['me', 'settings'] as const,
+};
+
+export function useMembers(projectId: string, enabled = true) {
+  return useQuery({ queryKey: sharingKeys.members(projectId), queryFn: () => ok(api.projects[':id'].members.$get({ param: { id: projectId } })), enabled });
+}
+
+export function useAccessRequests(projectId: string, enabled: boolean) {
+  return useQuery({ queryKey: sharingKeys.requests(projectId), queryFn: () => ok(api.projects[':id']['access-requests'].$get({ param: { id: projectId } })), enabled });
+}
+
+/** Sininho: sem WebSocket próprio, consulta a cada 30 s e ao voltar para a aba */
+export function useNotifications(enabled: boolean) {
+  return useQuery({ queryKey: sharingKeys.notifications, queryFn: () => ok(api.notifications.$get()), enabled, refetchInterval: 30_000, refetchOnWindowFocus: true });
+}
+
+export function useUserSettings() {
+  return useQuery({ queryKey: sharingKeys.settings, queryFn: () => ok(api.me.settings.$get()) });
+}

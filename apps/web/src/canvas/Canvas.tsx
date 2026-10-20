@@ -115,6 +115,7 @@ function CanvasInner() {
   const view = useProjectStore((s) => s.view);
   const name = useProjectStore((s) => s.name);
   const tool = useProjectStore((s) => s.tool);
+  const readOnly = useProjectStore((s) => s.readOnly);
   const loaded = useProjectStore((s) => s.loaded);
   const setTool = useProjectStore((s) => s.setTool);
   const relationSource = useUi((s) => s.relationSource);
@@ -349,6 +350,9 @@ function CanvasInner() {
       if (isTypingTarget(e.target)) return;
       const mod = e.ctrlKey || e.metaKey;
       const ui = useUi.getState();
+      // modo visualização: só navegação (selecionar, enquadrar, mão, ajuda)
+      const readOnly = useProjectStore.getState().readOnly;
+      if (readOnly && ((mod && (ARROWS[e.key] || /^[zyd]$/i.test(e.key))) || e.key === 'Delete' || e.key === 'Backspace' || e.key === 'Enter')) return;
       if (e.key === ' ' && !e.repeat) {
         setSpacePan(true);
         e.preventDefault();
@@ -417,6 +421,7 @@ function CanvasInner() {
         return;
       }
       if (!mod && !e.altKey && !e.shiftKey && TOOL_KEYS[e.key.toLowerCase()]) {
+        if (readOnly && !['select', 'hand'].includes(TOOL_KEYS[e.key.toLowerCase()])) return;
         setTool(TOOL_KEYS[e.key.toLowerCase()]);
         ui.set({ relationSource: null });
       }
@@ -544,7 +549,8 @@ function CanvasInner() {
         panOnDrag={panning ? true : [1, 2]}
         selectionOnDrag={!panning && tool === 'select'}
         selectionMode={SelectionMode.Partial}
-        nodesDraggable={!panning && tool !== 'relation'}
+        nodesDraggable={!panning && tool !== 'relation' && !readOnly}
+        nodesConnectable={!readOnly}
         elementsSelectable={!panning}
         panOnScroll={false}
         zoomOnDoubleClick={false}

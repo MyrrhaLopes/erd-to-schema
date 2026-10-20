@@ -2,7 +2,7 @@ import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import * as Y from 'yjs';
-import { Database, FolderOpen, HardDrive, LogOut, Plus, Search, Users, X } from 'lucide-react';
+import { Database, FolderOpen, HardDrive, LogOut, Plus, Search, Settings, Users, X } from 'lucide-react';
 import type { ProjectSummary } from '@erd/contracts';
 import { codeText, fromProject } from '@erd/crdt';
 import { placeNewEntities } from '@erd/model/project';
@@ -42,9 +42,9 @@ export function TopBar({ children }: { children?: ReactNode }) {
         <NotificationsBell />
         {me.data?.user && (
           <>
-            <span className="text-[12.5px] text-slate-600" data-testid="me">
-              {me.data.user.name}
-            </span>
+            <Link to="/settings" className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[12.5px] text-slate-600 hover:bg-slate-100" title="Configurações da conta" data-testid="me">
+              {me.data.user.name} <Settings size={13} className="text-slate-400" />
+            </Link>
             <button
               title="Sair"
               className="rounded p-1.5 text-slate-500 hover:bg-slate-100"

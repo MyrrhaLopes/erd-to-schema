@@ -7,6 +7,7 @@ import { healthRoutes } from './health';
 import { meRoutes } from './routes/me';
 import { projectsRoutes } from './routes/projects';
 import { canvasesRoutes } from './routes/canvases';
+import { accessRequestRoutes, invitationRoutes, notificationRoutes, projectSharingRoutes } from './routes/sharing';
 
 /** As rotas da API (o tipo delas é o contrato do cliente tipado `hc<ApiType>` na web) */
 export function buildApi(deps: Deps) {
@@ -18,7 +19,11 @@ export function buildApi(deps: Deps) {
     })
     .route('/me', meRoutes(deps))
     .route('/projects', projectsRoutes(deps))
-    .route('/canvases', canvasesRoutes(deps));
+    .route('/projects', projectSharingRoutes(deps))
+    .route('/canvases', canvasesRoutes(deps))
+    .route('/access-requests', accessRequestRoutes(deps))
+    .route('/invitations', invitationRoutes(deps))
+    .route('/notifications', notificationRoutes(deps));
 }
 
 export type ApiType = ReturnType<typeof buildApi>;
