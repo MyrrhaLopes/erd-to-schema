@@ -1,6 +1,14 @@
 node_modules
 dist
+**/dist/
 *.local
 .vite
+.turbo/
 coverage
 *.tsbuildinfo
+.env
+.env.*
+!.env.example
+playwright-report/
+test-results/
+e2e/artifacts/

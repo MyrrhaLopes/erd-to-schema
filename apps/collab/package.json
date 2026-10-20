@@ -1,0 +1,38 @@
+{
+  "name": "@erd/collab",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "vitest run",
+    "lint": "oxlint -c ../../.oxlintrc.json ."
+  },
+  "dependencies": {
+    "@erd/contracts": "workspace:*",
+    "@erd/crdt": "workspace:*",
+    "@erd/db": "workspace:*",
+    "@erd/model": "workspace:*",
+    "@erd/sandbox": "workspace:*",
+    "@erd/sync": "workspace:*",
+    "@hocuspocus/extension-redis": "^4.7.1",
+    "@hocuspocus/server": "^4.7.1",
+    "crossws": "^0.4.15",
+    "ioredis": "~5.6.1",
+    "jose": "^6.2.12",
+    "libpg-query": "^18.1.5",
+    "nanoid": "^6.0.2",
+    "yjs": "^13.6.33"
+  },
+  "devDependencies": {
+    "@erd/config": "workspace:*",
+    "@types/node": "^26.6.5",
+    "immer": "^11.1.21",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.4"
+  }
+}

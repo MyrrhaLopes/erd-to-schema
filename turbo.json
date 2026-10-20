@@ -1,0 +1,52 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
+    },
+    "typecheck": {
+      "dependsOn": [
+        "^build"
+      ]
+    },
+    "lint": {},
+    "test": {
+      "dependsOn": [
+        "^build"
+      ]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true,
+      "dependsOn": [
+        "^build"
+      ]
+    },
+    "e2e": {
+      "dependsOn": [
+        "^build"
+      ],
+      "cache": false
+    }
+  },
+  "globalPassThroughEnv": [
+    "TEST_DATABASE_URL",
+    "TEST_REDIS_URL",
+    "DATABASE_URL",
+    "CI",
+    "URL",
+    "SMTP_URL",
+    "MAILPIT_URL",
+    "CHROMIUM",
+    "PLAYWRIGHT_BROWSERS_PATH",
+    "HTTPS_PROXY",
+    "HTTP_PROXY",
+    "NODE_EXTRA_CA_CERTS",
+    "NODE_OPTIONS"
+  ]
+}

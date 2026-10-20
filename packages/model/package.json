@@ -1,0 +1,30 @@
+{
+  "name": "@erd/model",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "vitest run",
+    "lint": "oxlint -c ../../.oxlintrc.json ."
+  },
+  "dependencies": {
+    "@mrleebo/prisma-ast": "^0.16.0",
+    "drizzle-orm": "^0.45.4",
+    "fflate": "^0.8.3",
+    "libpg-query": "^18.1.5",
+    "nanoid": "^6.0.2",
+    "pgsql-deparser": "^18.3.12",
+    "sucrase": "^3.35.1"
+  },
+  "devDependencies": {
+    "@erd/config": "workspace:*",
+    "@types/node": "^26.6.5",
+    "fast-check": "^4.10.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.4"
+  }
+}

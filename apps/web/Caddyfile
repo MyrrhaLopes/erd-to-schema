@@ -1,0 +1,39 @@
+{
+	admin off
+	auto_https off
+	servers {
+		trusted_proxies static private_ranges
+	}
+}
+
+:{$PORT} {
+	encode zstd gzip
+	respond /healthz 200
+
+	handle /api/* {
+		reverse_proxy {$SERVER_INTERNAL_URL}
+	}
+	handle /collab* {
+		# upgrade de WebSocket é automático
+		reverse_proxy {$SERVER_INTERNAL_URL}
+	}
+
+	handle {
+		root * /srv
+		header /assets/* Cache-Control "public, max-age=31536000, immutable"
+		header /index.html Cache-Control "no-cache"
+		# o worker do Drizzle executa código do usuário com `new Function` → precisa de unsafe-eval só nele
+		header /assets/drizzle.worker-* Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'"
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		# 'wasm-unsafe-eval' é necessário para o libpg-query (WASM) no parser worker
+		?Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self' wss: ws: data: blob:; img-src 'self' data: blob: https://avatars.githubusercontent.com https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self' data:; frame-ancestors 'none'"
+		-Server
+	}
+}

@@ -1,0 +1,27 @@
+{
+  "name": "@erd/e2e",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "e2e": "playwright test",
+    "typecheck": "tsc -p .",
+    "load": "tsx load/loadtest.ts",
+    "lint": "oxlint -c ../.oxlintrc.json ."
+  },
+  "devDependencies": {
+    "@erd/config": "workspace:*",
+    "@erd/crdt": "workspace:*",
+    "@erd/db": "workspace:*",
+    "@erd/model": "workspace:*",
+    "@erd/web": "workspace:*",
+    "@hocuspocus/provider": "^4.7.1",
+    "@playwright/test": "1.56.1",
+    "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "yjs": "^13.6.33"
+  }
+}
