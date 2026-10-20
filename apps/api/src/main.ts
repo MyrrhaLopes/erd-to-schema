@@ -1,5 +1,5 @@
 import { serve } from '@hono/node-server';
-import { loadEnv } from './env';
+import { driveMissing, loadEnv } from './env';
 import { createDeps, wirePermissionEvents } from './deps';
 import { createApp } from './app';
 import { installShutdown } from './shutdown';
@@ -8,6 +8,9 @@ const env = loadEnv();
 const deps = createDeps(env);
 const state = { shuttingDown: false };
 const app = createApp(deps, state);
+// Drive configurado pela metade (só o GOOGLE_CLIENT_ID é o login com Google): sem isto, a funcionalidade só some da tela
+const missing = driveMissing(env);
+if (missing.length && (env.GOOGLE_PICKER_API_KEY || env.GOOGLE_PROJECT_NUMBER)) deps.log.warn({ missing }, 'Google Drive desligado: faltam variáveis de ambiente');
 
 // `::` cobre a rede privada do Railway (IPv6 nos ambientes antigos, IPv4 + IPv6 nos novos)
 const server = serve({ fetch: app.fetch, port: env.PORT, hostname: '::' }, (info) => deps.log.info({ port: info.port }, 'servidor no ar'));
