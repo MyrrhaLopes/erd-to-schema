@@ -59,6 +59,11 @@ async function checkInviteRate(deps: Deps, userId: string) {
   if ((r?.n ?? 0) >= deps.env.INVITES_PER_HOUR) throw new HTTPException(429, { message: 'Limite de convites por hora atingido. Tente mais tarde.' });
 }
 
+async function checkMemberLimit(deps: Deps, projectId: string) {
+  const [r] = await deps.db.select({ n: count() }).from(projectMembers).where(eq(projectMembers.projectId, projectId));
+  if ((r?.n ?? 0) >= deps.env.MAX_MEMBERS_PER_PROJECT) throw new HTTPException(422, { message: `Limite de ${deps.env.MAX_MEMBERS_PER_PROJECT} membros por projeto atingido` });
+}
+
 /** Adiciona (ou reativa) um membro numa transação, com cor estável ainda não usada no projeto */
 async function addMember(deps: Deps, projectId: string, userId: string, role: Role, by: string) {
   const used = await deps.db.select({ c: projectMembers.color }).from(projectMembers).where(eq(projectMembers.projectId, projectId));
@@ -100,6 +105,7 @@ export function projectSharingRoutes(deps: Deps) {
       const { role } = c.req.valid('json');
       const email = c.req.valid('json').email.toLowerCase();
       await checkInviteRate(deps, user.id);
+      await checkMemberLimit(deps, a.project.id);
       const [target] = await db.select().from(users).where(eq(users.email, email));
       if (target) {
         const [existing] = await db.select().from(projectMembers).where(and(eq(projectMembers.projectId, a.project.id), eq(projectMembers.userId, target.id)));
@@ -243,6 +249,10 @@ export function accessRequestRoutes(deps: Deps) {
     const a = await projectAccess(db, r.projectId, user.id);
     requireCan(a, 'approveRequests');
     if (r.status !== 'pending') throw new HTTPException(409, { message: 'Esse pedido já foi decidido' });
+    if (approve) {
+      const [m] = await db.select().from(projectMembers).where(and(eq(projectMembers.projectId, r.projectId), eq(projectMembers.userId, r.requesterId)));
+      if (!m) await checkMemberLimit(deps, r.projectId);
+    }
     await db.transaction(async (tx) => {
       await tx.update(accessRequests).set({ status: approve ? 'approved' : 'denied', decidedBy: user.id, decidedAt: new Date() }).where(eq(accessRequests.id, id));
       if (approve) {
@@ -310,6 +320,7 @@ export function invitationRoutes(deps: Deps) {
       if (row.i.email.toLowerCase() !== user.email.toLowerCase())
         throw new HTTPException(403, { message: `Este convite é para ${row.i.email}. Entre com essa conta para aceitar.` });
       const [existing] = await db.select().from(projectMembers).where(and(eq(projectMembers.projectId, row.i.projectId), eq(projectMembers.userId, user.id)));
+      if (!existing) await checkMemberLimit(deps, row.i.projectId);
       await db.transaction(async (tx) => {
         await tx.update(invitations).set({ acceptedAt: new Date() }).where(eq(invitations.id, row.i.id));
         await tx.insert(auditLog).values({ projectId: row.i.projectId, actorId: user.id, action: 'invitation.accepted', payload: { invitationId: row.i.id } });

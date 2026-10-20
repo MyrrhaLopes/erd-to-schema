@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowLeft,
+  History,
   ChevronDown,
   CloudUpload,
   Database,
@@ -20,6 +21,7 @@ import {
 import { NotificationsBell } from './Notifications';
 import { ShareDialog } from './sharing';
 import { PeerAvatars } from '../collab/presence/CanvasPresence';
+import { VersionsDialog } from './versions';
 import { useProjectStore, getProject, undo, redo } from '../store/useProjectStore';
 import { useUi, showToast } from '../store/useUi';
 import { allTags } from '@erd/model/tags';
@@ -167,6 +169,8 @@ export function Header() {
   const shownName = mode === 'remote' && project ? project.name : name;
   const [draftName, setDraftName] = useState(shownName);
   const [sharing, setSharing] = useState(false);
+  const [versions, setVersions] = useState(false);
+  const canvasId = useEditorContext((s) => s.canvasId);
   const editingName = useRef(false);
   useEffect(() => {
     if (!editingName.current) setDraftName(shownName);
@@ -353,6 +357,10 @@ export function Header() {
           <>
             <PeerAvatars />
             <NotificationsBell />
+            <button title="Versões" onClick={() => setVersions(true)} className="rounded p-1.5 text-slate-500 hover:bg-slate-100" data-testid="versions-button">
+              <History size={16} />
+            </button>
+            {versions && canvasId && <VersionsDialog project={project} canvasId={canvasId} onClose={() => setVersions(false)} />}
             <Link to="/p/$projectId/settings" params={{ projectId: project.id }} title="Configurações do projeto" className="rounded p-1.5 text-slate-500 hover:bg-slate-100" data-testid="project-settings">
               <Settings size={16} />
             </Link>

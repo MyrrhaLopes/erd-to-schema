@@ -31,6 +31,7 @@ installShutdown(
     // 2. grava os documentos pendentes e fecha os WebSockets com "reconecte"
     { name: 'collab', run: async () => deps.collab?.shutdown() },
     { name: 'events', run: () => unlisten() },
+    { name: 'redis', run: async () => deps.redis?.quit() },
     // termina os e-mails em envio; os pendentes ficam no banco para o próximo container
     { name: 'mail', run: () => deps.mail.stop() },
     // 3. fecha o pool do Postgres

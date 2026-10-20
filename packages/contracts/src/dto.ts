@@ -114,7 +114,7 @@ export const StatelessZ = z.discriminatedUnion('type', [
   z.object({ type: z.literal('resolve'), format: z.enum(['sql', 'prisma', 'drizzle']), id: z.string(), choice: z.enum(['text', 'diagram']) }),
   z.object({ type: z.literal('clear-divergent'), format: z.enum(['sql', 'prisma', 'drizzle']) }),
   z.object({ type: z.literal('permission-changed'), role: RoleZ.nullable() }),
-  z.object({ type: z.literal('restored'), versionId: z.string() }),
+  z.object({ type: z.literal('restored'), versionId: z.string(), label: z.string().optional(), by: z.string().optional() }),
 ]);
 export type Stateless = z.infer<typeof StatelessZ>;
 

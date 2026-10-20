@@ -11,6 +11,7 @@ import { emptyProjectDoc, fromProject, invalidEntities } from '@erd/crdt';
 import { buildSampleProject } from '@erd/model/sample';
 import { parseSql } from '@erd/model/formats/sql/parse';
 import { projectAccess, requireCan, requireUser, type AppEnv, type Deps } from '../context';
+import { renderThumbnail } from '../thumbnail';
 
 export const newId = (prefix: string) => `${prefix}_${nanoid(12)}`;
 
@@ -82,6 +83,7 @@ export function projectsRoutes(deps: Deps) {
         role: r.role,
         owner: { id: r.p.ownerId, name: r.ownerName },
         updatedAt: r.p.updatedAt.toISOString(),
+        thumbnailUrl: `/api/projects/${r.p.id}/thumbnail.svg?v=${r.p.updatedAt.getTime()}`,
         members: memberCounts.find((m) => m.id === r.p.id)?.n ?? 1,
         pendingRequests: can(r.role, 'approveRequests', r.p.settings) ? (pending.find((m) => m.id === r.p.id)?.n ?? 0) : undefined,
       }));
@@ -91,6 +93,11 @@ export function projectsRoutes(deps: Deps) {
     .post('/', zValidator('json', CreateProjectZ), async (c) => {
       const user = requireUser(c.get('user'));
       const body = c.req.valid('json');
+      const [owned] = await db
+        .select({ n: count() })
+        .from(projects)
+        .where(and(eq(projects.ownerId, user.id), isNull(projects.deletedAt)));
+      if ((owned?.n ?? 0) >= deps.env.MAX_PROJECTS_PER_USER) throw new HTTPException(422, { message: `Limite de ${deps.env.MAX_PROJECTS_PER_USER} projetos por conta atingido` });
       let initial: Uint8Array;
       if (body.initialState) initial = decodeInitialState(body.initialState);
       else if (body.template === 'sample') {
@@ -137,6 +144,20 @@ export function projectsRoutes(deps: Deps) {
         myRequest: myRequest ?? null,
       };
       return c.json(out);
+    })
+
+    /** Miniatura do primeiro canvas (SVG a partir do último snapshot projetado) */
+    .get('/:id/thumbnail.svg', async (c) => {
+      const user = requireUser(c.get('user'));
+      const a = await projectAccess(db, c.req.param('id'), user.id);
+      const [first] = await db
+        .select({ id: canvases.id })
+        .from(canvases)
+        .where(and(eq(canvases.projectId, a.project.id), isNull(canvases.deletedAt)))
+        .orderBy(asc(canvases.position), asc(canvases.createdAt))
+        .limit(1);
+      const snap = first ? ((await store.snapshot(first.id)) as Parameters<typeof renderThumbnail>[0]) : null;
+      return c.body(renderThumbnail(snap), 200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'private, max-age=300' });
     })
 
     .patch('/:id', zValidator('json', UpdateProjectZ), async (c) => {
@@ -197,6 +218,8 @@ export function projectsRoutes(deps: Deps) {
       requireCan(a, 'manageCanvases');
       const body = c.req.valid('json');
       if (body.kind === 'flow') throw new HTTPException(422, { message: 'O canvas de fluxos de usuário ainda não está disponível' });
+      const [nc] = await db.select({ n: count() }).from(canvases).where(and(eq(canvases.projectId, a.project.id), isNull(canvases.deletedAt)));
+      if ((nc?.n ?? 0) >= deps.env.MAX_CANVASES_PER_PROJECT) throw new HTTPException(422, { message: `Limite de ${deps.env.MAX_CANVASES_PER_PROJECT} canvases por projeto atingido` });
       const [pos] = await db.select({ n: sql<number>`coalesce(max(${canvases.position}), -1) + 1` }).from(canvases).where(eq(canvases.projectId, a.project.id));
       const id = newId('c');
       const [row] = await db.insert(canvases).values({ id, projectId: a.project.id, kind: body.kind, name: body.name, position: Number(pos?.n ?? 0) }).returning();

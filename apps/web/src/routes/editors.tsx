@@ -107,6 +107,10 @@ export function CanvasEditor() {
             color: p.color,
             name: me.data!.user!.name,
             onStateless: (m) => {
+              if (m.type === 'restored') {
+                showToast(`${m.by ?? 'Alguém'} restaurou a versão "${m.label ?? ''}"`);
+                return;
+              }
               if (m.type !== 'permission-changed') return;
               if (m.role === null) {
                 showToast('Seu acesso a este projeto foi removido');

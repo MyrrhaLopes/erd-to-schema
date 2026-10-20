@@ -36,6 +36,7 @@
   },
   "globalPassThroughEnv": [
     "TEST_DATABASE_URL",
+    "TEST_REDIS_URL",
     "DATABASE_URL",
     "CI",
     "URL",

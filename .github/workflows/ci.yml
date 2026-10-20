@@ -22,8 +22,15 @@ jobs:
         ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U erd" --health-interval 2s --health-timeout 5s --health-retries 30
+      # fase 7: o teste de duas réplicas usa o Redis
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 2s --health-timeout 5s --health-retries 30
     env:
       TEST_DATABASE_URL: postgres://erd:erd@localhost:5432/erd
+      TEST_REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -57,6 +64,8 @@ jobs:
       - run: pnpm --filter @erd/e2e exec playwright install --with-deps chromium
       # o mesmo conjunto de testes contra as imagens reais (as mesmas do Railway) + Postgres + Mailpit
       - run: docker compose --profile prod up --build -d --wait
+        env:
+          AUTH_SIGNUPS_PER_MINUTE: '100'
       - run: pnpm e2e
         env:
           URL: http://localhost:8081
@@ -72,3 +81,35 @@ jobs:
           path: |
             e2e/playwright-report
             e2e/artifacts
+
+  # fase 7: as mesmas jornadas de colaboração com duas réplicas do `server` + Redis atrás do Caddy,
+  # e o teste de carga (20 clientes, 200 tabelas) contra essa topologia
+  e2e-scale:
+    runs-on: ubuntu-latest
+    needs: verify
+    env:
+      REDIS_URL: redis://redis:6379
+      SERVER_UPSTREAMS: http://server:8080 http://server2:8080
+      AUTH_SIGNUPS_PER_MINUTE: '100'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @erd/e2e exec playwright install --with-deps chromium
+      - run: docker compose --profile prod --profile scale up --build -d --wait
+      - run: pnpm --filter @erd/e2e exec playwright test tests/realtime.spec.ts tests/presence.spec.ts tests/sharing.spec.ts tests/versions.spec.ts
+        env:
+          URL: http://localhost:8081
+          CI: 'true'
+      - run: pnpm load
+        env:
+          URL: http://localhost:8081
+          CLIENTS: '20'
+          TABLES: '200'
+          SECONDS: '45'
+      - if: failure()
+        run: docker compose --profile prod --profile scale logs

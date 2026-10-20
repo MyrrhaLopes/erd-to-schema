@@ -1,5 +1,8 @@
 import { createDb } from '@erd/db';
-import { CanvasStore, createCollab } from '@erd/collab';
+import { randomUUID } from 'node:crypto';
+import { Redis as RedisExtension } from '@hocuspocus/extension-redis';
+import { Redis as IORedis } from 'ioredis';
+import { CanvasStore, createCollab, RedisLeader } from '@erd/collab';
 import { createAuth } from './auth';
 import { roleOf, type CanvasWriter, type Deps } from './context';
 import { createPgEvents } from './events';
@@ -34,12 +37,29 @@ export function createDeps(env: Env, overrides: DepsOptions = {}): Deps {
   const mail =
     overrides.mail ?? (env.NODE_ENV === 'test' ? new InlineMailQueue(mailer, log) : new BossMailQueue(env.DATABASE_URL, mailer, log.child({ component: 'mail' })));
   const store = overrides.store ?? new CanvasStore(db);
-  const pgEvents = createPgEvents(pool, log);
+  const events = overrides.events ?? createPgEvents(pool, log);
+  // fase 7: com REDIS_URL, várias réplicas do `server` compartilham os documentos abertos
+  // (extensão Redis do Hocuspocus) e elegem uma só para rodar o sync bot de cada documento
+  const instanceId = `erd-${randomUUID().slice(0, 8)}`;
+  const redis = env.REDIS_URL && overrides.realtime !== false ? new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null, lazyConnect: false }) : undefined;
   const collab =
     overrides.collab ??
     (overrides.realtime === false
       ? undefined
-      : createCollab({ store, jwtSecret: env.COLLAB_JWT_SECRET, log: log.child({ component: 'collab' }), currentRole: (p, u) => roleOf(db, p, u) }));
+      : createCollab({
+          store,
+          jwtSecret: env.COLLAB_JWT_SECRET,
+          log: log.child({ component: 'collab', instance: instanceId }),
+          currentRole: (p, u) => roleOf(db, p, u),
+          ...(redis
+            ? {
+                extensions: [new RedisExtension({ redis, identifier: instanceId, prefix: 'erd' })],
+                leader: new RedisLeader(redis, instanceId),
+                multiInstance: true,
+                forwardBotMessage: (documentName, msg) => void events.botMessage(documentName, msg),
+              }
+            : {}),
+        }));
   return {
     db,
     pool,
@@ -50,13 +70,19 @@ export function createDeps(env: Env, overrides: DepsOptions = {}): Deps {
     log,
     store,
     writer: overrides.writer ?? collab?.writer ?? storeWriter(store),
-    events: overrides.events ?? pgEvents,
+    events,
     collab,
+    redis,
   };
 }
 
-/** Ouve os eventos de permissão e repassa ao servidor de colaboração deste processo */
+/** Ouve os eventos (papel, avisos, pedidos ao bot) e repassa ao servidor de colaboração deste processo */
 export async function wirePermissionEvents(deps: Deps) {
-  if (!deps.collab) return async () => {};
-  return createPgEvents(deps.pool, deps.log).subscribe((e) => void deps.collab!.permissionChanged(e));
+  const collab = deps.collab;
+  if (!collab) return async () => {};
+  return createPgEvents(deps.pool, deps.log).subscribe({
+    permissionChanged: (e) => void collab.permissionChanged(e),
+    broadcast: (canvasId, payload) => collab.broadcast(canvasId, payload),
+    botMessage: (documentName, msg) => collab.handleBotMessage(documentName, msg),
+  });
 }

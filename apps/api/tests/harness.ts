@@ -9,7 +9,7 @@ import type { Deps } from '../src/context';
 
 export const APP_URL = 'http://app.test';
 
-export async function harness(overrides: Partial<Deps> & { realtime?: boolean } = {}) {
+export async function harness({ envOverrides, ...overrides }: Partial<Deps> & { realtime?: boolean; envOverrides?: Record<string, string> } = {}) {
   const t = await createTestDatabase();
   const env = loadEnv({
     NODE_ENV: 'test',
@@ -20,6 +20,7 @@ export async function harness(overrides: Partial<Deps> & { realtime?: boolean } 
     COLLAB_JWT_SECRET: 'y'.repeat(40),
     MAIL_DRIVER: 'memory',
     INVITES_PER_HOUR: '5',
+    ...envOverrides,
   });
   const mailer = new MemoryMailer();
   const deps = createDeps(env, { db: t.db, pool: t.pool, mailer, log: createLogger('silent'), realtime: false, ...overrides });

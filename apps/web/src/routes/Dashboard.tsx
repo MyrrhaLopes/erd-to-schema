@@ -71,7 +71,8 @@ function ProjectCard({ p }: { p: ProjectSummary }) {
       className="group flex flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-indigo-300 hover:shadow"
       data-testid="project-card"
     >
-      <div className="mb-8 flex items-start justify-between gap-2">
+      {p.thumbnailUrl && <img src={p.thumbnailUrl} alt="" loading="lazy" className="mb-3 h-28 w-full rounded-md border border-slate-100 object-cover" data-testid="thumbnail" />}
+      <div className={(p.thumbnailUrl ? 'mb-3' : 'mb-8') + ' flex items-start justify-between gap-2'}>
         <span className="truncate text-[14px] font-semibold text-slate-800 group-hover:text-indigo-700">{p.name}</span>
         <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10.5px] text-slate-600">{ROLE_LABEL[p.role]}</span>
       </div>

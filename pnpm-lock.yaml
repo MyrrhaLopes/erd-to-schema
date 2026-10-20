@@ -45,6 +45,9 @@ importers:
       '@erd/sync':
         specifier: workspace:*
         version: link:../../packages/sync
+      '@hocuspocus/extension-redis':
+        specifier: ^4.7.1
+        version: 4.7.1(y-protocols@1.0.7(yjs@13.6.33))(yjs@13.6.33)
       '@hocuspocus/server':
         specifier: ^4.7.1
         version: 4.7.1(y-protocols@1.0.7(yjs@13.6.33))(yjs@13.6.33)
@@ -87,6 +90,9 @@ importers:
       hono:
         specifier: ^4.13.13
         version: 4.13.13
+      ioredis:
+        specifier: ~5.6.1
+        version: 5.6.1
       isolated-vm:
         specifier: ^7.0.1
         version: 7.0.1
@@ -184,18 +190,27 @@ importers:
       '@erd/sync':
         specifier: workspace:*
         version: link:../../packages/sync
+      '@hocuspocus/extension-redis':
+        specifier: ^4.7.1
+        version: 4.7.1(y-protocols@1.0.7(yjs@13.6.33))(yjs@13.6.33)
       '@hocuspocus/server':
         specifier: ^4.7.1
         version: 4.7.1(y-protocols@1.0.7(yjs@13.6.33))(yjs@13.6.33)
       crossws:
         specifier: ^0.4.15
         version: 0.4.15
+      ioredis:
+        specifier: ~5.6.1
+        version: 5.6.1
       jose:
         specifier: ^6.2.12
         version: 6.2.12
       libpg-query:
         specifier: ^18.1.5
         version: 18.1.5
+      nanoid:
+        specifier: ^6.0.2
+        version: 6.0.2
       yjs:
         specifier: ^13.6.33
         version: 13.6.33
@@ -378,12 +393,21 @@ importers:
       '@erd/config':
         specifier: workspace:*
         version: link:../packages/config
+      '@erd/crdt':
+        specifier: workspace:*
+        version: link:../packages/crdt
       '@erd/db':
         specifier: workspace:*
         version: link:../packages/db
+      '@erd/model':
+        specifier: workspace:*
+        version: link:../packages/model
       '@erd/web':
         specifier: workspace:*
         version: link:../apps/web
+      '@hocuspocus/provider':
+        specifier: ^4.7.1
+        version: 4.7.1(y-protocols@1.0.7(yjs@13.6.33))(yjs@13.6.33)
       '@playwright/test':
         specifier: 1.56.1
         version: 1.56.1
@@ -402,6 +426,9 @@ importers:
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
+      yjs:
+        specifier: ^13.6.33
+        version: 13.6.33
 
   packages/canvas-kinds:
     devDependencies:
@@ -1246,6 +1273,12 @@ packages:
   '@hocuspocus/common@4.7.1':
     resolution: {integrity: sha512-+N4t8AdBIWBUK+yHsuBvCcBm96eV2E3quIewma9+TYomqVMXhrovAf3dA6XFbYHRM7ggtXklHt2mFqTcpiMdAQ==}
 
+  '@hocuspocus/extension-redis@4.7.1':
+    resolution: {integrity: sha512-4FMBHxUlnX925cqJhH/f3BIyaROoAiZrjJ0SLuhGCdqZCYmrhTdf9kmjY46M+3jCNiHnCa4JD8eSr3MXYxIVMQ==}
+    peerDependencies:
+      y-protocols: ^1.0.6
+      yjs: ^13.6.8
+
   '@hocuspocus/provider@4.7.1':
     resolution: {integrity: sha512-znulqyCwwuhq86aFmTF6izOomwRWlZGReCAf+SZpLgpvdfvBQJzjoj9HdtuXXfL9wkBM2Ydt86kaMs2rjaicRA==}
     peerDependencies:
@@ -1270,6 +1303,9 @@ packages:
     peerDependencies:
       hono: '>=4.11.2'
       zod: ^3.25.0 || ^4.0.0
+
+  '@ioredis/commands@1.11.0':
+    resolution: {integrity: sha512-tuMmOu6dtyGFv/fzCjtapCJj/zgoHaFsqs3wKsroJSRXtlLmyL/t+B7uaQiavGk1F3WWFQcUqZwk92bpp9jKcA==}
 
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
@@ -1827,6 +1863,12 @@ packages:
 
   '@selderee/plugin-htmlparser2@0.11.0':
     resolution: {integrity: sha512-P33hHGdldxGabLFjPPpaTxVolMrzrcegejx+0GxjrIb9Zv48D8yAIA/QTDR2dFl7Uz7urX8aX6+5bCZslr+gWQ==}
+
+  '@sesamecare-oss/redlock@1.4.0':
+    resolution: {integrity: sha512-2z589R+yxKLN4CgKxP1oN4dsg6Y548SE4bVYam/R0kHk7Q9VrQ9l66q+k1ehhSLLY4or9hcchuF9/MhuuZdjJg==}
+    engines: {node: '>=16'}
+    peerDependencies:
+      ioredis: '>=5'
 
   '@stablelib/base64@1.0.1':
     resolution: {integrity: sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ==}
@@ -2424,6 +2466,10 @@ packages:
   classcat@5.0.5:
     resolution: {integrity: sha512-JhZUT7JFcQy/EzW605k/ktHtncoo9vnyW/2GspNYwFlN1C/WmjuV/xtS04e9SOkL2sTdw0VAZ2UGCcQ9lR6p6w==}
 
+  cluster-key-slot@1.1.2:
+    resolution: {integrity: sha512-RMr0FhtfXemyinomL4hrWcYJxmX6deFdCxpJzhDttxgO1+bcCnkk+9drydLVDmAMG7NE6aN/fl4F7ucU/90gAA==}
+    engines: {node: '>=0.10.0'}
+
   codemirror@6.0.2:
     resolution: {integrity: sha512-VhydHotNW5w1UGK0Qj96BwSk/Zqbp9WbnyK2W/eVMv4QyF41INRGpjUhFJY7/uDNuudSc33a/PKr4iDqRduvHw==}
 
@@ -2520,6 +2566,10 @@ packages:
 
   defu@6.1.7:
     resolution: {integrity: sha512-7z22QmUWiQ/2d0KkdYmANbRUVABpZ9SNYyH5vx6PZ+nE5bcC0l7uFvEfHlyld/HcGBFTL536ClDt3DEcSlEJAQ==}
+
+  denque@2.1.0:
+    resolution: {integrity: sha512-HVQE3AAb/pxF8fQAoiqpvg9i3evqug3hoiwakOyZAwJm+6vZehbkYXZ0l4JxS+I3QxM97v5aaRNhj8v5oBhekw==}
+    engines: {node: '>=0.10'}
 
   dequal@2.0.3:
     resolution: {integrity: sha512-0je+qPKHEMohvfRTCEo3CrPG6cAzAYgmzKyxRiYSSDkS6eGJdyVJm7WaYA5ECaAD9wLB2T4EEeymA5aFVcYXCA==}
@@ -2801,6 +2851,10 @@ packages:
   iobuffer@5.4.0:
     resolution: {integrity: sha512-DRebOWuqDvxunfkNJAlc3IzWIPD5xVxwUNbHr7xKB8E6aLJxIPfNX3CoMJghcFjpv6RWQsrcJbghtEwSPoJqMA==}
 
+  ioredis@5.6.1:
+    resolution: {integrity: sha512-UxC0Yv1Y4WRJiGQxQkP0hfdL0/5/6YvdfOOClRgJ0qppSarkhneSa6UvkMkms0AkdGimSH3Ikqm+6mkMmX7vGA==}
+    engines: {node: '>=12.22.0'}
+
   is-alphabetical@2.0.1:
     resolution: {integrity: sha512-FWyyY60MeTNyeSRpkM2Iry0G9hpr7/9kD40mD/cGQEuilcZYS4okz8SN2Q6rLCJ8gbCt6fN+rC+6tMGS99LaxQ==}
 
@@ -3003,6 +3057,12 @@ packages:
 
   lines-and-columns@1.2.4:
     resolution: {integrity: sha512-7ylylesZQ/PV29jhEDl3Ufjo6ZX7gCqJr5F7PKrqc93v7fzSymt1BpwEU8nAUXs8qzzvqhbjhK5QZg6Mt/HkBg==}
+
+  lodash.defaults@4.2.0:
+    resolution: {integrity: sha512-qjxPLHd3r5DnsdGacqOMU6pb/avJzdh9tFX2ymgoZE27BmjXrNy/y4LoaiTeAb+O3gL8AfpJGtqfX/ae2leYYQ==}
+
+  lodash.isarguments@3.1.0:
+    resolution: {integrity: sha512-chi4NHZlZqZD18a0imDHnZPrDeBbTtVN7GXMwuGdRH9qotxAjYs3aVLKc7zNOG9eddR5Ksd8rvFEBc9SsggPpg==}
 
   longest-streak@3.1.0:
     resolution: {integrity: sha512-9Ri+o0JYgehTaVBBDoMqIl8GXtbWg711O3srftcHhZ0dqnETqLaoIK0x17fUw9rFSlK/0NlsKe0Ahhyl5pXE2g==}
@@ -3381,6 +3441,14 @@ packages:
   real-require@1.0.0:
     resolution: {integrity: sha512-P4nbQYQfePJxRSmY+v/KINxVucm4NF3p3s7pJveMTtom52FR4YGltUQLB8idDXwDDWW+eYrWDFbuzUnjoWHF7g==}
 
+  redis-errors@1.2.0:
+    resolution: {integrity: sha512-1qny3OExCf0UvUV/5wpYKf2YwPcOqXzkwKKSmKHiE6ZMQs5heeE/c8eXK+PNllPvmjgAbfnsbpkGZWy8cBpn9w==}
+    engines: {node: '>=4'}
+
+  redis-parser@3.0.0:
+    resolution: {integrity: sha512-DJnGAeenTdpMEH6uAJRK/uiyEIH9WVsUmoLwzudwGJUwZPp80PDBWPHXSAGNPwNvIXAbe7MSUB1zQFugFml66A==}
+    engines: {node: '>=4'}
+
   regenerator-runtime@0.13.11:
     resolution: {integrity: sha512-kY1AZVr2Ra+t+piVaJ4gxaFaReZVH40AKNo7UCX6W+dEwBo/2oZJzqfuN1qLq1oL45o56cPaTXELwrTh8Fpggg==}
 
@@ -3496,6 +3564,9 @@ packages:
   stackblur-canvas@2.7.0:
     resolution: {integrity: sha512-yf7OENo23AGJhBriGx0QivY5JP6Y1HbrrDI6WLt6C5auYZXlQrheoY8hD4ibekFKz1HOfE48Ww8kMWMnJD/zcQ==}
     engines: {node: '>=0.1.14'}
+
+  standard-as-callback@2.1.0:
+    resolution: {integrity: sha512-qoRRSyROncaz1z0mvYqIE4lCd9p2R90i6GxW3uZv5ucSu8tU7B5HXUP1gG8pVZsYNVaXjk8ClXHPttLyxAL48A==}
 
   standardwebhooks@1.1.1:
     resolution: {integrity: sha512-bCbX9ZEyFkWPsRz7Bl3NuQUJohmwGSev/yhr7vhaGPlc4AfIrspIRa6cPTBuI1ItmrTDJ4d/S2hCsfe4+vQGnQ==}
@@ -4257,6 +4328,19 @@ snapshots:
     dependencies:
       lib0: 0.2.119
 
+  '@hocuspocus/extension-redis@4.7.1(y-protocols@1.0.7(yjs@13.6.33))(yjs@13.6.33)':
+    dependencies:
+      '@hocuspocus/common': 4.7.1
+      '@hocuspocus/server': 4.7.1(y-protocols@1.0.7(yjs@13.6.33))(yjs@13.6.33)
+      '@sesamecare-oss/redlock': 1.4.0(ioredis@5.6.1)
+      ioredis: 5.6.1
+      kleur: 4.1.5
+      y-protocols: 1.0.7(yjs@13.6.33)
+      yjs: 13.6.33
+    transitivePeerDependencies:
+      - srvx
+      - supports-color
+
   '@hocuspocus/provider@4.7.1(y-protocols@1.0.7(yjs@13.6.33))(yjs@13.6.33)':
     dependencies:
       '@hocuspocus/common': 4.7.1
@@ -4285,6 +4369,8 @@ snapshots:
     dependencies:
       hono: 4.13.13
       zod: 4.6.7
+
+  '@ioredis/commands@1.11.0': {}
 
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:
@@ -4665,6 +4751,10 @@ snapshots:
     dependencies:
       domhandler: 5.0.3
       selderee: 0.11.0
+
+  '@sesamecare-oss/redlock@1.4.0(ioredis@5.6.1)':
+    dependencies:
+      ioredis: 5.6.1
 
   '@stablelib/base64@1.0.1': {}
 
@@ -5108,6 +5198,8 @@ snapshots:
 
   classcat@5.0.5: {}
 
+  cluster-key-slot@1.1.2: {}
+
   codemirror@6.0.2:
     dependencies:
       '@codemirror/autocomplete': 6.20.4
@@ -5191,6 +5283,8 @@ snapshots:
   deepmerge@4.3.1: {}
 
   defu@6.1.7: {}
+
+  denque@2.1.0: {}
 
   dequal@2.0.3: {}
 
@@ -5448,6 +5542,20 @@ snapshots:
 
   iobuffer@5.4.0: {}
 
+  ioredis@5.6.1:
+    dependencies:
+      '@ioredis/commands': 1.11.0
+      cluster-key-slot: 1.1.2
+      debug: 4.4.3
+      denque: 2.1.0
+      lodash.defaults: 4.2.0
+      lodash.isarguments: 3.1.0
+      redis-errors: 1.2.0
+      redis-parser: 3.0.0
+      standard-as-callback: 2.1.0
+    transitivePeerDependencies:
+      - supports-color
+
   is-alphabetical@2.0.1: {}
 
   is-alphanumerical@2.0.1:
@@ -5599,6 +5707,10 @@ snapshots:
   lilconfig@2.1.0: {}
 
   lines-and-columns@1.2.4: {}
+
+  lodash.defaults@4.2.0: {}
+
+  lodash.isarguments@3.1.0: {}
 
   longest-streak@3.1.0: {}
 
@@ -6192,6 +6304,12 @@ snapshots:
 
   real-require@1.0.0: {}
 
+  redis-errors@1.2.0: {}
+
+  redis-parser@3.0.0:
+    dependencies:
+      redis-errors: 1.2.0
+
   regenerator-runtime@0.13.11:
     optional: true
 
@@ -6322,6 +6440,8 @@ snapshots:
 
   stackblur-canvas@2.7.0:
     optional: true
+
+  standard-as-callback@2.1.0: {}
 
   standardwebhooks@1.1.1:
     dependencies:

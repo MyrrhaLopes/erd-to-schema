@@ -13,6 +13,8 @@ beforeAll(async () => {
       async permissionChanged(e) {
         events.push(e);
       },
+      async broadcast() {},
+      async botMessage() {},
     },
   });
 });

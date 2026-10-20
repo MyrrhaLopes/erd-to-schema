@@ -25,6 +25,8 @@ pnpm dev                  # web em http://localhost:5173 (+ API em :8080, via pr
 | `pnpm e2e` | Playwright; sobe a API e o Vite sozinho (com `URL=...`, roda contra outro servidor) |
 | `pnpm verify` | lint + typecheck + test + build + imagens Docker — rodar antes de abrir PR |
 | `pnpm prod:local` | as imagens reais (as mesmas do Railway) + Postgres + Mailpit, em http://localhost:8081 |
+| `pnpm prod:scale` | igual, com Redis e **duas réplicas** do `server` atrás do Caddy (fase 7) |
+| `pnpm load` | teste de carga: 20 clientes editando um canvas de 200 tabelas (`URL`, `CLIENTS`, `TABLES`, `SECONDS`) |
 | `pnpm db:generate` | gera a migração SQL a partir do schema Drizzle (versionar junto com a mudança) |
 | `pnpm env:check` | valida o `.env` com o mesmo zod do boot do servidor |
 
@@ -48,7 +50,15 @@ Resumo do §15 do plano. Um projeto Railway com três serviços:
 4. Variável do `web`: `SERVER_INTERNAL_URL=http://${{server.RAILWAY_PRIVATE_DOMAIN}}:${{server.PORT}}`.
 5. Deploy: o `server` roda as migrações no `preDeployCommand` e só recebe tráfego quando `/readyz` responde; o `web` responde em `/healthz`.
 
-Daí em diante: PR → CI verde → merge → deploy automático. Migrações seguem *expand/contract* (nada de `DROP`/`RENAME` no mesmo deploy que muda o código que usa a coluna).
+Daí em diante: PR → CI verde → merge → deploy automático.
+
+**Produção x staging:** duplique o ambiente (*Environments → New → Duplicate*) para ter `staging` com banco próprio; a produção deploya de `main` (com aprovação) e o staging do branch de desenvolvimento. Configure *usage limits* e alertas de gasto no workspace.
+
+**Backups:** além dos backups de volume do Postgres no Railway (diário e semanal, aba *Backups*), o workflow [`backup.yml`](.github/workflows/backup.yml) faz um `pg_dump` semanal cifrado (segredos `DATABASE_PUBLIC_URL` e `BACKUP_PASSPHRASE`) e guarda como artefato por 90 dias, fora do Railway.
+
+**Observabilidade:** logs em JSON (pino) filtráveis por `level`, `canvasId` e `userId`; `GET /metrics` no `server` (formato Prometheus: conexões, documentos abertos, maior documento, tempo de parse do bot, timeouts do sandbox, updates recusados, 5xx, limite de taxa, pool do Postgres, memória). O `server` fica na rede privada (o Caddy só repassa `/api` e `/collab`); com `METRICS_TOKEN`, o endpoint exige o token.
+
+**Escala (fase 7):** com uma réplica, nada muda. Para várias: crie um serviço **Redis** (template do Railway), defina `REDIS_URL=${{Redis.REDIS_URL}}` no `server` e suba `numReplicas` no `apps/api/railway.json`. Cada réplica sincroniza os documentos abertos pela extensão Redis do Hocuspocus; uma só (eleita por documento no Redis) roda o sync bot, para o SQL não ser traduzido duas vezes; os avisos de papel e de versão restaurada continuam pelo `LISTEN/NOTIFY` do Postgres, que já alcança todas as réplicas. **Nunca** mais de uma réplica sem `REDIS_URL`. Migrações seguem *expand/contract* (nada de `DROP`/`RENAME` no mesmo deploy que muda o código que usa a coluna).
 
 ## O que dá para fazer
 
@@ -77,6 +87,9 @@ Daí em diante: PR → CI verde → merge → deploy automático. Migrações se
 - **Notificações:** sininho in-app (pedidos, decisões, convites, papel alterado) e e-mails desligáveis em **Configurações da conta** (`/settings`). Os e-mails saem por uma fila **pg-boss** no próprio Postgres, com retentativa e backoff; a requisição não espera o envio.
 - **Presença (estilo Google Docs):** cada membro tem uma cor estável no projeto. No canvas aparecem o cursor de cada pessoa com o nome, o anel na cor de quem está com um nó selecionado (com mini-avatares), o aviso "Fulana está editando" ao renomear uma tabela ou coluna (só avisa, não bloqueia), o arraste ao vivo, arestas selecionadas na cor de quem selecionou e pontinhos no minimapa. No topo, os avatares de quem está online: clicar **segue** a pessoa.
 - **Painéis e notas compartilhados:** cursores e seleções dos outros com nome, rastro do que acabaram de digitar na cor deles, bolinhas nas abas mostrando quem está em cada formato, erros "em edição por Fulana" no trecho que outra pessoa está escrevendo, faixa na margem do bloco da tabela que alguém selecionou no canvas e "Ver no diagrama" para ir do código à tabela.
+- **Versões:** o botão de histórico no topo do editor salva uma versão com nome; uma automática é guardada por dia (as automáticas com mais de 30 dias saem). **Restaurar** aplica a diferença como uma edição comum: todos veem na hora (com o aviso "Fulana restaurou a versão…") e dá para desfazer com Ctrl+Z.
+- **Miniaturas** dos projetos no dashboard, desenhadas no servidor (SVG) a partir do layout.
+- **Limites:** projetos por conta, canvases por projeto, membros por projeto, versões por canvas, convites por hora, cadastros por minuto, requisições por minuto na API, tamanho e taxa de mensagens no WebSocket — todos configuráveis (veja `.env.example`).
 - **Autoria:** o que outra pessoa muda acende por alguns segundos na cor dela; **Visualização → Mostrar autoria** pinta cada tabela, coluna, nota e trecho de texto na cor de quem editou por último ("Bia · há 3 min").
 - **Mudança de papel ao vivo:** a API publica o evento (Postgres `LISTEN/NOTIFY`) e o servidor de colaboração rebaixa, promove ou desconecta as conexões abertas.
 
@@ -138,7 +151,22 @@ apps/web/src/export/       PNG/PDF (html-to-image 1.11.11 pinado + jsPDF)
 - **Formatação:** o painel que está sendo editado nunca é sobrescrito. Os outros painéis são regenerados no formato canônico. Se o modelo muda enquanto um painel tem edição pendente ou com erro, aparece um banner com duas opções: aplicar a versão do painel ou recarregar do modelo.
 - **Toast de mudanças:** depois de cada sync vindo de um texto, um toast mostra a lista de mudanças aplicadas, para que nada mude em silêncio.
 
+## Teste de carga
+
+`pnpm load` cria uma conta (confirmada pelo Mailpit), um projeto com 200 tabelas e N clientes Yjs reais (distribuídos em processos, como navegadores) que movem tabelas, renomeiam colunas e digitam no painel SQL ao mesmo tempo. Mede a latência de propagação entre clientes e confere que todos terminam com o mesmo documento. Resultado local contra `pnpm prod:local` (20 clientes, 200 tabelas, 30 s, ~39 op/s no total):
+
+| Topologia | p50 | p95 | p99 | convergência |
+|---|---|---|---|---|
+| 1 réplica | 33 ms | 99 ms | 175 ms | OK |
+| 2 réplicas + Redis (`pnpm prod:scale`) | 34 ms | 121 ms | 224 ms | OK |
+
+O job `e2e-scale` do CI roda as jornadas de colaboração e este teste contra as duas réplicas. No staging: `URL=https://<staging> LOAD_EMAIL=... LOAD_PASSWORD=... pnpm load`.
+
 ## Diferenças em relação ao plano
+
+- Os eventos de permissão e os avisos de canvas (versão restaurada, pedidos ao bot) usam `LISTEN/NOTIFY` do Postgres também com várias réplicas, em vez do Redis pub/sub: o Postgres já alcança todas as réplicas, e o Redis fica só para o Hocuspocus e a eleição do líder do bot.
+- As miniaturas são SVG gerados no servidor a partir do layout (sem navegador no backend), não imagens do canvas renderizado.
+- O canvas de **fluxos de usuário** (fase 8) aparece como aba "em breve": o contrato `CanvasKind` (`packages/canvas-kinds`) já existe, então ele entra como um tipo novo, sem refatorar o editor.
 
 - No Drizzle, relações-nota e tags usam a mesma diretiva `// @erd:` dos outros formatos (lida por scan de linhas), e não `relations()`. Isso deixa o formato uniforme e não depende da troca de API do Drizzle 1.0.
 - O auto-layout é próprio, em camadas por profundidade de FK (botão **Organizar**). O `elkjs` ficou de fora.

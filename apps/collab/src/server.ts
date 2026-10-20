@@ -5,7 +5,8 @@ import { Hocuspocus, type Connection, type Document, type Extension } from '@hoc
 import crossws from 'crossws/adapters/node';
 import { jwtVerify } from 'jose';
 import { parse as pgParse } from 'libpg-query';
-import { CollabClaimsZ, StatelessZ, type CollabClaims, type PermissionChanged, type Role } from '@erd/contracts';
+import { CollabClaimsZ, StatelessZ, type CollabClaims, type PermissionChanged, type Role, type Stateless } from '@erd/contracts';
+import { localLeader, type Leader } from './leader';
 import { roots } from '@erd/crdt';
 import { parseSql } from '@erd/model/formats/sql/parse';
 import { parsePrisma } from '@erd/model/formats/prisma/parse';
@@ -45,6 +46,9 @@ export interface CollabMetrics {
   divergentPatches: number;
   rejectedUpdates: number;
   storedBytes: number;
+  /** Maior estado de documento na última compactação (bytes) */
+  largestDocumentBytes: number;
+  autoVersions: number;
 }
 
 export interface CollabOptions {
@@ -59,7 +63,15 @@ export interface CollabOptions {
   botDebounceMs?: number;
   /** Extensões extras (ex.: Redis na fase 7) */
   extensions?: Extension[];
+  /** Várias instâncias (Redis): quem roda o sync bot de cada documento */
+  leader?: Leader;
+  /** Várias instâncias: a escrita da API sempre passa pelo documento vivo (e o Redis espalha) */
+  multiInstance?: boolean;
+  /** Mensagem para o bot de um documento cujo líder é outra instância */
+  forwardBotMessage?: (documentName: string, msg: BotMessage) => void;
 }
+
+export type BotMessage = Extract<Stateless, { type: 'flush' | 'resolve' | 'clear-divergent' }>;
 
 /**
  * O servidor de colaboração (§6): salas por documento (`canvas:<id>`), autenticação por
@@ -78,6 +90,9 @@ export function createCollab(o: CollabOptions) {
       },
     });
   const bots = new Map<string, SyncBot>();
+  /** Documentos já descarregados (a eleição do líder é assíncrona: não liga bot num documento que saiu) */
+  const unloaded = new WeakSet<Document>();
+  const leader = o.leader ?? localLeader;
   const lastStored = new Map<string, Uint8Array>();
   const metrics: CollabMetrics = {
     documents: 0,
@@ -88,7 +103,11 @@ export function createCollab(o: CollabOptions) {
     divergentPatches: 0,
     rejectedUpdates: 0,
     storedBytes: 0,
+    largestDocumentBytes: 0,
+    autoVersions: 0,
   };
+  /** Última checagem do snapshot diário por documento (no máximo uma por hora) */
+  const dailyChecked = new Map<string, number>();
 
   const parse = (f: Format, text: string): Promise<ParseOutcome> =>
     f === 'sql' ? parseSql(text, pgParse as never) : f === 'prisma' ? Promise.resolve(parsePrisma(text)) : sandbox.parse(text);
@@ -106,7 +125,14 @@ export function createCollab(o: CollabOptions) {
       metrics.storedBytes += update.byteLength;
     }
     lastStored.set(document.name, sv);
-    if (await o.store.shouldCompact(canvasId)) await o.store.compact(canvasId, document);
+    if (await o.store.shouldCompact(canvasId)) {
+      await o.store.compact(canvasId, document);
+      metrics.largestDocumentBytes = Math.max(0, ...o.store.lastSize.values());
+    }
+    if (update.byteLength > 2 && Date.now() - (dailyChecked.get(canvasId) ?? 0) > 3600_000) {
+      dailyChecked.set(canvasId, Date.now());
+      if (await o.store.maybeDailyVersion(canvasId, document)) metrics.autoVersions++;
+    }
   }
 
   /** Autoria (§5.5): o `clientID` do Yjs de cada conexão → o usuário, escrito pelo servidor */
@@ -167,18 +193,7 @@ export function createCollab(o: CollabOptions) {
 
     async afterLoadDocument({ document, documentName }) {
       metrics.documents = hocuspocus.getDocumentsCount();
-      const bot = new SyncBot(document, {
-        parse,
-        debounceMs: o.botDebounceMs,
-        onError: (e) => o.log.error({ err: e, documentName }, 'sync bot'),
-        onMetric: (name, format, value) => {
-          if (name === 'parse') {
-            metrics.parses[format].count++;
-            metrics.parses[format].totalMs += value;
-          } else if (name === 'divergent') metrics.divergentPatches += value;
-        },
-      });
-      bots.set(documentName, bot.start());
+      await ensureBot(documentName, document);
     },
 
     async beforeHandleMessage({ connection, update, context }) {
@@ -216,11 +231,9 @@ export function createCollab(o: CollabOptions) {
         return;
       }
       if (connection.readOnly) return;
-      const bot = bots.get(document.name);
-      if (!bot) return;
-      if (msg.type === 'flush') bot.flush(msg.format);
-      else if (msg.type === 'resolve') bot.resolve(msg.format, msg.id, msg.choice);
-      else if (msg.type === 'clear-divergent') bot.clearDivergent(msg.format);
+      if (msg.type !== 'flush' && msg.type !== 'resolve' && msg.type !== 'clear-divergent') return;
+      // o bot deste documento pode estar em outra instância
+      if (!handleBotMessage(document.name, msg)) o.forwardBotMessage?.(document.name, msg);
       o.log.info({ userId: ctx.user.id, canvasId: ctx.canvasId, msg: msg.type }, 'stateless');
     },
 
@@ -233,6 +246,8 @@ export function createCollab(o: CollabOptions) {
     },
 
     async beforeUnloadDocument({ documentName }) {
+      const d = hocuspocus.documents.get(documentName);
+      if (d) unloaded.add(d);
       // o bot termina o que estiver traduzindo antes do último store
       const bot = bots.get(documentName);
       if (bot) await bot.whenIdle({ flushTimers: true });
@@ -241,10 +256,48 @@ export function createCollab(o: CollabOptions) {
     async afterUnloadDocument({ documentName }) {
       bots.get(documentName)?.stop();
       bots.delete(documentName);
+      void leader.release(documentName);
       lastStored.delete(documentName);
       metrics.documents = hocuspocus.getDocumentsCount();
     },
   });
+
+  /** Liga o bot do documento se esta instância for (ou virar) a líder dele; desliga se deixou de ser */
+  // (no afterLoadDocument o documento ainda não está em `hocuspocus.documents`: vem pelo parâmetro)
+  async function ensureBot(documentName: string, document: Document) {
+    const lead = await leader.acquire(documentName).catch(() => false);
+    const running = bots.get(documentName);
+    if (lead && !running && !unloaded.has(document)) {
+      const bot = new SyncBot(document, {
+        parse,
+        debounceMs: o.botDebounceMs,
+        onError: (e) => o.log.error({ err: e, documentName }, 'sync bot'),
+        onMetric: (name, format, value) => {
+          if (name === 'parse') {
+            metrics.parses[format].count++;
+            metrics.parses[format].totalMs += value;
+          } else if (name === 'divergent') metrics.divergentPatches += value;
+        },
+      });
+      bots.set(documentName, bot.start());
+    } else if (!lead && running) {
+      running.stop();
+      bots.delete(documentName);
+    }
+  }
+
+  function handleBotMessage(documentName: string, msg: BotMessage): boolean {
+    const bot = bots.get(documentName);
+    if (!bot) return false;
+    if (msg.type === 'flush') bot.flush(msg.format);
+    else if (msg.type === 'resolve') bot.resolve(msg.format, msg.id, msg.choice);
+    else bot.clearDivergent(msg.format);
+    return true;
+  }
+
+  // com várias instâncias, a liderança é renovada (e assumida, se o líder caiu) periodicamente
+  const leaderTimer = o.leader ? setInterval(() => hocuspocus.documents.forEach((d, name) => void ensureBot(name, d)), 5000) : undefined;
+  leaderTimer?.unref();
 
   const ws = crossws({
     hooks: {
@@ -295,7 +348,7 @@ export function createCollab(o: CollabOptions) {
     writer: {
       async apply(canvasId: string, update: Uint8Array) {
         const name = docName(canvasId);
-        if (hocuspocus.documents.has(name)) {
+        if (hocuspocus.documents.has(name) || o.multiInstance) {
           const dc = await hocuspocus.openDirectConnection(name);
           await dc.transact((doc) => Y.applyUpdate(doc, update));
           await dc.disconnect();
@@ -307,6 +360,14 @@ export function createCollab(o: CollabOptions) {
       async read(canvasId: string) {
         const doc = hocuspocus.documents.get(docName(canvasId));
         if (doc) return Y.encodeStateAsUpdate(doc);
+        if (o.multiInstance) {
+          // o documento pode estar vivo em outra instância (o banco tem até ~10 s de atraso)
+          const dc = await hocuspocus.openDirectConnection(docName(canvasId));
+          let state: Uint8Array | null = null;
+          await dc.transact((d) => void (state = d.share.size ? Y.encodeStateAsUpdate(d) : null));
+          await dc.disconnect();
+          return state;
+        }
         return o.store.load(canvasId);
       },
     },
@@ -349,11 +410,17 @@ export function createCollab(o: CollabOptions) {
      * e perder isso seria perder edições) e fecha os WebSockets com "reconecte" — os clientes
      * Yjs reconectam no container novo e reenviam o que faltar.
      */
+    handleBotMessage,
+
     async shutdown() {
+      clearInterval(leaderTimer);
       for (const bot of bots.values()) await bot.whenIdle({ flushTimers: true });
       for (const d of hocuspocus.documents.values()) await persist(d);
       hocuspocus.closeConnections();
-      for (const bot of bots.values()) bot.stop();
+      for (const [name, bot] of bots) {
+        bot.stop();
+        await leader.release(name);
+      }
       await sandbox.close();
     },
   };

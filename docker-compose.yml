@@ -1,5 +1,7 @@
 # Dev: `pnpm infra:up` sobe só o Postgres e o Mailpit.
 # Produção local: `pnpm prod:local` sobe as imagens reais (as mesmas do Railway) + Postgres + Mailpit.
+# Escala (fase 7): `pnpm prod:scale` sobe também o Redis e uma segunda réplica do `server`;
+# o Caddy distribui /api e /collab entre as duas.
 services:
   postgres:
     image: postgres:16
@@ -18,7 +20,7 @@ services:
     image: axllent/mailpit:v1.27
     ports: ["1025:1025", "8025:8025"]
 
-  server:
+  server: &server
     profiles: [prod]
     image: erd-server
     build:
@@ -40,6 +42,11 @@ services:
       SMTP_URL: smtp://mailpit:1025
       EMAIL_FROM: ERD Builder <noreply@localhost>
       RAILWAY_DEPLOYMENT_DRAINING_SECONDS: 30
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      # o e2e cria várias contas por minuto do mesmo IP (em produção, o padrão é 5)
+      AUTH_SIGNUPS_PER_MINUTE: ${AUTH_SIGNUPS_PER_MINUTE:-5}
+      # vazio = uma réplica só, sem Redis
+      REDIS_URL: ${REDIS_URL:-}
     depends_on:
       postgres: { condition: service_healthy }
       createdb: { condition: service_completed_successfully }
@@ -48,6 +55,24 @@ services:
       interval: 3s
       retries: 40
     stop_grace_period: 35s
+
+  # fase 7: segunda réplica (mesma imagem), só com o perfil `scale`; espera a primeira para não
+  # rodarem as migrações ao mesmo tempo
+  server2:
+    <<: *server
+    profiles: [scale]
+    build: !reset null
+    depends_on:
+      server: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  redis:
+    profiles: [scale]
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      retries: 20
 
   # banco separado do de dev para o prod:local
   createdb:
@@ -64,7 +89,8 @@ services:
     build: { context: ., dockerfile: apps/web/Dockerfile }
     environment:
       PORT: 8080
-      SERVER_INTERNAL_URL: http://server:8080
+      # com o perfil `scale`, as duas réplicas (o Caddy reparte as requisições e os WebSockets)
+      SERVER_INTERNAL_URL: ${SERVER_UPSTREAMS:-http://server:8080}
     ports: ["8081:8080"]
     depends_on:
       server: { condition: service_healthy }

@@ -19,6 +19,8 @@
     "docker:build": "docker build -f apps/api/Dockerfile -t erd-server . && docker build -f apps/web/Dockerfile -t erd-web .",
     "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm docker:build",
     "prod:local": "docker compose --profile prod up --build",
+    "prod:scale": "REDIS_URL=redis://redis:6379 SERVER_UPSTREAMS='http://server:8080 http://server2:8080' docker compose --profile prod --profile scale up --build",
+    "load": "pnpm --filter @erd/e2e load",
     "db:generate": "pnpm --filter @erd/db exec drizzle-kit generate",
     "db:migrate": "pnpm --filter @erd/db migrate",
     "db:studio": "pnpm --filter @erd/db exec drizzle-kit studio",

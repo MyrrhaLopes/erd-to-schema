@@ -3,7 +3,8 @@ import { HTTPException } from 'hono/http-exception';
 import { bodyLimit } from 'hono/body-limit';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { and, canvases, count, eq, isNull } from '@erd/db';
+import { and, auditLog, canvases, canvasVersions, count, desc, eq, isNull, users } from '@erd/db';
+import { CreateVersionZ, type Version } from '@erd/contracts';
 import * as Y from 'yjs';
 import { SignJWT } from 'jose';
 import { UpdateCanvasZ } from '@erd/contracts';
@@ -103,6 +104,64 @@ export function canvasesRoutes(deps: Deps) {
         const update = await readBinary(c.req.raw, MAX_UPDATE * 5);
         checkUpdate(await deps.writer.read(a.canvas.id), update);
         await deps.writer.apply(a.canvas.id, update);
+        return c.json({ ok: true });
+      })
+
+      /** Versões nomeadas e automáticas (§6.3) */
+      .get('/:id/versions', async (c) => {
+        const user = requireUser(c.get('user'));
+        const a = await canvasAccess(db, c.req.param('id'), user.id);
+        const rows = await db
+          .select({ id: canvasVersions.id, label: canvasVersions.label, createdAt: canvasVersions.createdAt, byId: users.id, byName: users.name })
+          .from(canvasVersions)
+          .leftJoin(users, eq(users.id, canvasVersions.createdBy))
+          .where(eq(canvasVersions.canvasId, a.canvas.id))
+          .orderBy(desc(canvasVersions.createdAt))
+          .limit(200);
+        const out: Version[] = rows.map((r) => ({ id: r.id, label: r.label, createdAt: r.createdAt.toISOString(), createdBy: r.byId ? { id: r.byId, name: r.byName ?? '' } : null }));
+        return c.json(out);
+      })
+
+      .post('/:id/versions', zValidator('json', CreateVersionZ), async (c) => {
+        const user = requireUser(c.get('user'));
+        const a = await canvasAccess(db, c.req.param('id'), user.id);
+        requireCan(a, 'edit');
+        const [n] = await db.select({ n: count() }).from(canvasVersions).where(eq(canvasVersions.canvasId, a.canvas.id));
+        if ((n?.n ?? 0) >= deps.env.MAX_VERSIONS_PER_CANVAS) throw new HTTPException(422, { message: 'Limite de versões deste canvas atingido. Apague versões antigas.' });
+        const state = await deps.writer.read(a.canvas.id);
+        if (!state) throw new HTTPException(409, { message: 'O canvas ainda está vazio' });
+        const { label } = c.req.valid('json');
+        const id = await deps.store.createVersion(a.canvas.id, label, state, user.id);
+        await db.insert(auditLog).values({ projectId: a.project.id, actorId: user.id, action: 'version.created', payload: { canvasId: a.canvas.id, versionId: id, label } });
+        return c.json({ id }, 201);
+      })
+
+      /** Estado de uma versão: o cliente calcula o diff contra o documento atual e aplica como uma edição normal (desfazível) */
+      .get('/:id/versions/:vid/state', async (c) => {
+        const user = requireUser(c.get('user'));
+        const a = await canvasAccess(db, c.req.param('id'), user.id);
+        const [v] = await db.select({ state: canvasVersions.state }).from(canvasVersions).where(and(eq(canvasVersions.id, c.req.param('vid')), eq(canvasVersions.canvasId, a.canvas.id)));
+        if (!v) throw new HTTPException(404, { message: 'Versão não encontrada' });
+        return c.body(v.state as Uint8Array<ArrayBuffer>, 200, { 'Content-Type': 'application/octet-stream', 'Cache-Control': 'private, max-age=86400, immutable' });
+      })
+
+      /** Registro da restauração (feita pelo cliente) e aviso a quem está no canvas */
+      .post('/:id/versions/:vid/restored', async (c) => {
+        const user = requireUser(c.get('user'));
+        const a = await canvasAccess(db, c.req.param('id'), user.id);
+        requireCan(a, 'edit');
+        const [v] = await db.select({ id: canvasVersions.id, label: canvasVersions.label }).from(canvasVersions).where(and(eq(canvasVersions.id, c.req.param('vid')), eq(canvasVersions.canvasId, a.canvas.id)));
+        if (!v) throw new HTTPException(404, { message: 'Versão não encontrada' });
+        await db.insert(auditLog).values({ projectId: a.project.id, actorId: user.id, action: 'version.restored', payload: { canvasId: a.canvas.id, versionId: v.id } });
+        await deps.events.broadcast(a.canvas.id, { type: 'restored', versionId: v.id, label: v.label, by: user.name });
+        return c.json({ ok: true });
+      })
+
+      .delete('/:id/versions/:vid', async (c) => {
+        const user = requireUser(c.get('user'));
+        const a = await canvasAccess(db, c.req.param('id'), user.id);
+        requireCan(a, 'manageCanvases');
+        await db.delete(canvasVersions).where(and(eq(canvasVersions.id, c.req.param('vid')), eq(canvasVersions.canvasId, a.canvas.id)));
         return c.json({ ok: true });
       })
 

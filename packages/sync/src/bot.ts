@@ -131,6 +131,10 @@ export class SyncBot {
   private pending = new Set<Format>();
   private running = false;
   private flow2Scheduled = false;
+  private flow2Timer: ReturnType<typeof setTimeout> | undefined;
+  /** Duração e fim da última regeneração dos textos (throttle adaptativo do fluxo 2) */
+  private lastFlow2Ms = 0;
+  private lastFlow2At = 0;
   private modelRev = 0;
   private stopped = false;
   private authors: Record<Format, number[]> = { sql: [], prisma: [], drizzle: [] };
@@ -175,6 +179,7 @@ export class SyncBot {
     this.stopped = true;
     this.doc.off('afterTransaction', this.onTx);
     for (const t of Object.values(this.timers)) clearTimeout(t);
+    clearTimeout(this.flow2Timer);
     this.timers = {};
     this.pending.clear();
   }
@@ -216,7 +221,13 @@ export class SyncBot {
   /** Para testes e para o desligamento: espera filas, timers e parses terminarem */
   async whenIdle(opts: { flushTimers?: boolean } = {}) {
     for (let i = 0; i < 2000; i++) {
-      if (opts.flushTimers) for (const f of Object.keys(this.timers) as Format[]) this.schedule(f, 0);
+      if (opts.flushTimers) {
+        for (const f of Object.keys(this.timers) as Format[]) this.schedule(f, 0);
+        if (this.flow2Timer && this.flow2Scheduled) {
+          this.flow2Scheduled = false;
+          this.runFlow2();
+        }
+      }
       const busy = this.running || this.pending.size || this.flow2Scheduled || Object.keys(this.timers).length;
       if (!busy) return;
       await new Promise((r) => setTimeout(r, 2));
@@ -240,15 +251,27 @@ export class SyncBot {
     }
     if (modelChanged) {
       this.modelRev++;
-      if (!this.flow2Scheduled) {
-        this.flow2Scheduled = true;
-        queueMicrotask(() => {
-          if (!this.flow2Scheduled || this.stopped) return;
-          this.flow2Scheduled = false;
-          this.runFlow2();
-        });
-      }
+      this.scheduleFlow2();
     }
+  }
+
+  /**
+   * Fluxo 2 logo depois da transação; em rajadas num documento grande (regenerar três textos
+   * de 200 tabelas leva dezenas de ms), espera pelo menos o dobro da última duração desde a
+   * anterior: as mudanças acumuladas saem num patch só e o servidor não para de repassar updates.
+   */
+  private scheduleFlow2() {
+    if (this.flow2Scheduled) return;
+    this.flow2Scheduled = true;
+    const run = () => {
+      this.flow2Timer = undefined;
+      if (!this.flow2Scheduled || this.stopped) return;
+      this.flow2Scheduled = false;
+      this.runFlow2();
+    };
+    const wait = this.lastFlow2At + this.lastFlow2Ms * 2 - Date.now();
+    if (this.lastFlow2Ms < 5 || wait <= 0) queueMicrotask(run);
+    else this.flow2Timer = setTimeout(run, wait);
   }
 
   private schedule(f: Format, ms: number) {
@@ -289,7 +312,10 @@ export class SyncBot {
   /* ---------------- fluxo 2: modelo → texto ---------------- */
 
   private runFlow2() {
+    clearTimeout(this.flow2Timer);
+    this.flow2Timer = undefined;
     const model = this.projector.current;
+    const t0 = performance.now();
     try {
       this.doc.transact(() => {
         for (const f of this.formats) this.modelToText(f, model);
@@ -297,6 +323,8 @@ export class SyncBot {
     } catch (e) {
       this.opts.onError?.(e);
     }
+    this.lastFlow2Ms = performance.now() - t0;
+    this.lastFlow2At = Date.now();
   }
 
   private freshState(f: Format, text: string, model: ProjectDoc, base: string, textHash: string): FormatSync {

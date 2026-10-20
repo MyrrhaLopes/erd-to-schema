@@ -4,6 +4,8 @@ import { csrf } from 'hono/csrf';
 import { secureHeaders } from 'hono/secure-headers';
 import type { AppEnv, Deps } from './context';
 import { healthRoutes } from './health';
+import { httpMetrics, metricsRoutes } from './metrics';
+import { rateLimit } from './rateLimit';
 import { meRoutes } from './routes/me';
 import { projectsRoutes } from './routes/projects';
 import { canvasesRoutes } from './routes/canvases';
@@ -17,6 +19,7 @@ export function buildApi(deps: Deps) {
       c.set('user', s?.user ?? null);
       await next();
     })
+    .use('*', rateLimit(deps.env.API_RATE_PER_MINUTE))
     .route('/me', meRoutes(deps))
     .route('/projects', projectsRoutes(deps))
     .route('/projects', projectSharingRoutes(deps))
@@ -34,10 +37,13 @@ export function createApp(deps: Deps, state = { shuttingDown: false }) {
   app.use('*', async (c, next) => {
     const t0 = performance.now();
     await next();
-    if (c.req.path !== '/healthz' && c.req.path !== '/readyz')
+    httpMetrics.requests++;
+    if (c.res.status >= 500) httpMetrics.errors5xx++;
+    if (c.req.path !== '/healthz' && c.req.path !== '/readyz' && c.req.path !== '/metrics')
       deps.log.info({ method: c.req.method, path: c.req.path, status: c.res.status, ms: Math.round(performance.now() - t0) }, 'http');
   });
   app.route('/', healthRoutes(deps, state));
+  app.route('/', metricsRoutes(deps));
   // a origem pública é a única aceita em requisições que mudam estado (cookie first-party + CSRF)
   app.use('/api/*', csrf({ origin: [deps.env.APP_URL] }));
   app.on(['GET', 'POST'], '/api/auth/*', (c) => deps.auth.handler(c.req.raw));

@@ -2,7 +2,7 @@ import type pg from 'pg';
 import { and, canvases, type Db, eq, isNull, projectMembers, projects } from '@erd/db';
 import { HTTPException } from 'hono/http-exception';
 import { can, defaultSettings, type Action, type ProjectSettings, type Role } from '@erd/contracts';
-import type { CanvasStore, Collab } from '@erd/collab';
+import type { BotMessage, CanvasStore, Collab } from '@erd/collab';
 import type { Auth, SessionUser } from './auth';
 import type { Env } from './env';
 import type { Logger } from './log';
@@ -12,6 +12,10 @@ import type { MailQueue } from './mailQueue';
 /** Eventos para fora da requisição (mudança de papel → servidor de colaboração; e-mails → fila) */
 export interface Events {
   permissionChanged(e: { projectId: string; userId: string; role: Role | null }): Promise<void>;
+  /** Mensagem fora do documento para todos que estão num canvas, em qualquer réplica */
+  broadcast(canvasId: string, payload: Record<string, unknown>): Promise<void>;
+  /** Pedido ao sync bot de um documento cujo líder pode ser outra réplica */
+  botMessage(documentName: string, msg: BotMessage): Promise<void>;
 }
 
 /** Escrita num canvas vinda da API (import, restauração): no documento vivo, se houver, ou no log */
@@ -35,6 +39,8 @@ export interface Deps {
   events: Events;
   /** Servidor de colaboração no mesmo processo (ausente nos testes que não precisam dele) */
   collab?: Collab;
+  /** Fase 7: conexão com o Redis (várias réplicas) */
+  redis?: { quit(): Promise<unknown> };
 }
 
 export type AppEnv = { Variables: { user: SessionUser | null } };

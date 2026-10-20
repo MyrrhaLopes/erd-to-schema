@@ -25,6 +25,17 @@ export const EnvZ = z
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
     /** Limite de convites por usuário por hora (antiabuso, §7.2) */
     INVITES_PER_HOUR: z.coerce.number().int().positive().default(20),
+    /** Limites por conta e por projeto (§6, fase 6) */
+    MAX_PROJECTS_PER_USER: z.coerce.number().int().positive().default(100),
+    MAX_CANVASES_PER_PROJECT: z.coerce.number().int().positive().default(20),
+    MAX_MEMBERS_PER_PROJECT: z.coerce.number().int().positive().default(50),
+    MAX_VERSIONS_PER_CANVAS: z.coerce.number().int().positive().default(200),
+    /** Cadastros por minuto por IP (antiabuso); o e2e contra as imagens de produção sobe isso */
+    AUTH_SIGNUPS_PER_MINUTE: z.coerce.number().int().positive().default(5),
+    /** Requisições por minuto por pessoa (ou IP) na API, fora o login (que tem limite próprio) */
+    API_RATE_PER_MINUTE: z.coerce.number().int().positive().default(600),
+    /** Protege o /metrics (Prometheus); sem ele, o /metrics só responde na rede privada */
+    METRICS_TOKEN: z.string().min(16).optional(),
   })
   .superRefine((e, ctx) => {
     if (e.NODE_ENV === 'production' && e.MAIL_DRIVER !== 'resend' && e.MAIL_DRIVER !== 'smtp')
@@ -39,7 +50,8 @@ export type Env = z.infer<typeof EnvZ>;
 
 /** Valida as variáveis no boot: com variável faltando, o processo cai com uma mensagem clara e o healthcheck nunca passa */
 export function loadEnv(source: Record<string, string | undefined> = process.env): Env {
-  const r = EnvZ.safeParse(source);
+  // variável definida vazia (`REDIS_URL=` no compose, por exemplo) conta como ausente
+  const r = EnvZ.safeParse(Object.fromEntries(Object.entries(source).filter(([, v]) => v !== '')));
   if (r.success) return r.data;
   const lines = r.error.issues.map((i) => `  - ${i.path.join('.') || '(raiz)'}: ${i.message}`);
   throw new Error(`Variáveis de ambiente inválidas:\n${lines.join('\n')}`);

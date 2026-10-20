@@ -1,0 +1,43 @@
+name: Backup do Postgres
+
+# Cópia lógica semanal (§15.6), independente dos backups de volume do Railway.
+# Segredos: DATABASE_PUBLIC_URL (a URL pública do Postgres de produção) e BACKUP_PASSPHRASE
+# (o dump é cifrado com gpg antes de virar artefato). Restaurar:
+#   gpg -d erd-AAAA-MM-DD.dump.gpg > erd.dump && pg_restore --clean --no-owner -d "$URL" erd.dump
+on:
+  schedule:
+    - cron: '17 4 * * 0' # domingo, 04:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pg_dump:
+    runs-on: ubuntu-latest
+    # o cliente da mesma versão do servidor (pg_dump mais velho que o servidor recusa)
+    container: postgres:16
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
+      PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+    steps:
+      - name: Conferir segredos
+        run: |
+          if [ -z "$DATABASE_URL" ] || [ -z "$PASSPHRASE" ]; then
+            echo "Defina DATABASE_PUBLIC_URL e BACKUP_PASSPHRASE nos segredos do repositório"; exit 1
+          fi
+      - name: pg_dump (formato custom, comprimido)
+        run: |
+          apt-get update -qq && apt-get install -y -qq gnupg >/dev/null
+          FILE="erd-$(date -u +%F).dump"
+          pg_dump --format=custom --no-owner --no-acl --dbname="$DATABASE_URL" --file="$FILE"
+          pg_restore --list "$FILE" > /dev/null # o arquivo é legível
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$PASSPHRASE" --symmetric --cipher-algo AES256 --output "$FILE.gpg" "$FILE"
+          rm "$FILE"
+          echo "FILE=$FILE.gpg" >> "$GITHUB_ENV"
+          ls -lh "$FILE.gpg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.FILE }}
+          path: ${{ env.FILE }}
+          retention-days: 90

@@ -1,5 +1,6 @@
 import * as Y from 'yjs';
-import { and, asc, canvases, canvasState, canvasUpdates, count, type Db, eq, gt, lte, projects, sql } from '@erd/db';
+import { and, asc, canvases, canvasState, canvasUpdates, canvasVersions, count, type Db, desc, eq, gt, isNull, lt, lte, projects, sql } from '@erd/db';
+import { nanoid } from 'nanoid';
 import { Projector } from '@erd/crdt';
 
 export interface CompactionPolicy {
@@ -18,6 +19,9 @@ const DEFAULT_POLICY: CompactionPolicy = { maxUpdates: 200, maxAgeMs: 10 * 60_00
  * `json_snapshot` (a projeção via @erd/crdt) usado na listagem e nos exports.
  */
 export class CanvasStore {
+  /** Tamanho do estado de cada canvas na última compactação (métrica) */
+  readonly lastSize = new Map<string, number>();
+
   constructor(
     private readonly db: Db,
     private readonly policy: CompactionPolicy = DEFAULT_POLICY,
@@ -83,9 +87,26 @@ export class CanvasStore {
     const own = !doc;
     const d = doc ?? (await this.loadDoc(canvasId));
     if (!d) return;
-    const state = Y.encodeStateAsUpdate(d);
-    const stateVector = Y.encodeStateVector(d);
-    const snapshot = new Projector(d).current;
+    let state = Y.encodeStateAsUpdate(d);
+    let merged: Y.Doc | null = null;
+    if (doc && upTo > 0) {
+      // com várias réplicas, outra instância pode ter gravado no log um update que este
+      // documento ainda não recebeu: o estado gravado inclui o log antes de apagá-lo
+      const [prev] = await this.db.select({ last: canvasState.lastUpdateId }).from(canvasState).where(eq(canvasState.canvasId, canvasId));
+      const pending = await this.db
+        .select({ update: canvasUpdates.update })
+        .from(canvasUpdates)
+        .where(and(eq(canvasUpdates.canvasId, canvasId), gt(canvasUpdates.id, prev?.last ?? 0), lte(canvasUpdates.id, upTo)));
+      if (pending.length) {
+        state = Y.mergeUpdates([state, ...pending.map((p) => p.update)]);
+        merged = new Y.Doc({ gc: true });
+        Y.applyUpdate(merged, state);
+      }
+    }
+    this.lastSize.set(canvasId, state.byteLength);
+    const stateVector = Y.encodeStateVector(merged ?? d);
+    const snapshot = new Projector(merged ?? d).current;
+    merged?.destroy();
     if (own) d.destroy();
     await this.db.transaction(async (tx) => {
       const [prev] = await tx.select({ last: canvasState.lastUpdateId }).from(canvasState).where(eq(canvasState.canvasId, canvasId));
@@ -104,6 +125,33 @@ export class CanvasStore {
     Y.applyUpdate(doc, update);
     await this.compact(canvasId, doc);
     doc.destroy();
+  }
+
+  /** Uma versão nomeada (§6.3): o estado inteiro do documento naquele momento */
+  async createVersion(canvasId: string, label: string, state: Uint8Array, createdBy: string | null) {
+    const id = `v_${nanoid(12)}`;
+    await this.db.insert(canvasVersions).values({ id, canvasId, label, state, createdBy });
+    return id;
+  }
+
+  /**
+   * Snapshot automático diário (§6.3): no máximo um por canvas a cada 24 h, gravado quando
+   * o documento é salvo. Os automáticos com mais de 30 dias são apagados (os nomeados ficam).
+   */
+  async maybeDailyVersion(canvasId: string, doc: Y.Doc, now = new Date()): Promise<boolean> {
+    const [last] = await this.db
+      .select({ at: canvasVersions.createdAt })
+      .from(canvasVersions)
+      .where(and(eq(canvasVersions.canvasId, canvasId), isNull(canvasVersions.createdBy)))
+      .orderBy(desc(canvasVersions.createdAt))
+      .limit(1);
+    if (last && now.getTime() - last.at.getTime() < 24 * 3600_000) return false;
+    const label = `Automática — ${now.toLocaleDateString('pt-BR', { timeZone: 'UTC' })}`;
+    await this.createVersion(canvasId, label, Y.encodeStateAsUpdate(doc), null);
+    await this.db
+      .delete(canvasVersions)
+      .where(and(eq(canvasVersions.canvasId, canvasId), isNull(canvasVersions.createdBy), lt(canvasVersions.createdAt, new Date(now.getTime() - 30 * 86400_000))));
+    return true;
   }
 
   async snapshot(canvasId: string) {
