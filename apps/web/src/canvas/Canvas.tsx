@@ -42,9 +42,13 @@ import { isTypingTarget } from './keyboard';
 import { tableById } from '@erd/model/schema';
 import { setPresence, throttle, usePresence } from '../collab/presence';
 import { getSession } from '../collab/session';
+import { FollowBanner, presenceNodeTypes, RemoteCursors, useCanvasPresence, usePeerDots } from '../collab/presence/CanvasPresence';
 
 // nós, arestas, toolbar e inspector vêm do tipo de canvas (§8.3)
-const { nodeTypes, edgeTypes, Toolbar, Inspector } = erdKind;
+const { edgeTypes, Toolbar, Inspector } = erdKind;
+// + o nó invisível que marca, no minimapa, onde cada pessoa está olhando
+const nodeTypes = { ...erdKind.nodeTypes, ...presenceNodeTypes };
+const realNodes = (rf: { getNodes: () => Node[] }) => rf.getNodes().filter((n) => n.type !== 'peer');
 
 const TOOL_KEYS: Record<string, ReturnType<typeof useProjectStore.getState>['tool']> = {
   v: 'select',
@@ -193,7 +197,7 @@ function CanvasInner() {
   useEffect(() => {
     if (loaded && !fitted.current && nodes.length) {
       fitted.current = true;
-      setTimeout(() => rf.fitView({ padding: 0.15, maxZoom: 1.1 }), 50);
+      setTimeout(() => rf.fitView({ padding: 0.15, maxZoom: 1.1, nodes: realNodes(rf) }), 50);
     }
   }, [loaded, nodes.length, rf]);
 
@@ -327,6 +331,9 @@ function CanvasInner() {
     setTimeout(() => setPresence(getSession(), { dragging: null }), 60);
   }, [publishDrag]);
   const remoteDrags = usePresence((s) => s.drags);
+  const peerEdges = usePresence((s) => s.edges);
+  const peerDots = usePeerDots();
+  const presence = useCanvasPresence(wrapper);
 
   /**
    * Duplo clique numa relação: foca em uma das duas tabelas (não as duas de uma vez — mais fácil de ver).
@@ -413,7 +420,7 @@ function CanvasInner() {
         return;
       }
       if (e.shiftKey && (e.key === '!' || e.code === 'Digit1')) {
-        rf.fitView({ padding: 0.15, duration: 300 });
+        rf.fitView({ padding: 0.15, duration: 300, nodes: realNodes(rf) });
         return;
       }
       if (e.key === '?') {
@@ -501,8 +508,9 @@ function CanvasInner() {
         return { ...n, position: { x: d.x, y: d.y }, style: { ...n.style, outline: `2px solid ${d.color}`, outlineOffset: 3, borderRadius: 10 }, draggable: false };
       });
     }
-    return erasing?.size ? base.map((n) => (erasing.has(n.id) ? { ...n, className: 'erd-erasing' } : n)) : base;
-  }, [nodes, erasing, highlightSet, remoteDrags]);
+    if (erasing?.size) base = base.map((n) => (erasing.has(n.id) ? { ...n, className: 'erd-erasing' } : n));
+    return peerDots.length ? [...base, ...peerDots] : base;
+  }, [nodes, erasing, highlightSet, remoteDrags, peerDots]);
   const shownEdges = useMemo(() => {
     let base = edges;
     if (highlightSet) {
@@ -518,14 +526,16 @@ function CanvasInner() {
         return { ...e, data: { ...e.data, emphasized: direct, dimmed: !direct } satisfies ErdEdge['data'] };
       });
     }
+    // aresta selecionada por outra pessoa: o traço na cor dela (§5.3)
+    if (peerEdges.size) base = base.map((e) => (peerEdges.has(e.id) && e.data ? { ...e, data: { ...e.data, peerColor: peerEdges.get(e.id) } } : e));
     return erasing?.size ? base.map((e) => (erasing.has(e.id) ? { ...e, className: 'erd-erasing' } : e)) : base;
-  }, [edges, erasing, highlightSet, selectedTableIds]);
+  }, [edges, erasing, highlightSet, selectedTableIds, peerEdges]);
 
   const panning = tool === 'hand' || spacePan;
   const cursor = panning ? 'grab' : tool === 'table' || tool === 'note' ? 'crosshair' : tool === 'relation' ? 'cell' : undefined;
 
   return (
-    <div ref={wrapper} className={'relative h-full w-full tool-' + tool} style={{ cursor }}>
+    <div ref={wrapper} className={'relative h-full w-full tool-' + tool} style={{ cursor }} onPointerMove={presence.onPointerMove} onPointerLeave={presence.onPointerLeave}>
       <ErdMarkers />
       <TypeDatalist />
       <ReactFlow
@@ -542,6 +552,8 @@ function CanvasInner() {
         onNodeDrag={onNodeDrag}
         onNodeDragStop={onNodeDragStop}
         onEdgeDoubleClick={onEdgeDoubleClick}
+        onMove={presence.onMove}
+        onMoveStart={presence.onMoveStart}
         connectionMode={ConnectionMode.Loose}
         deleteKeyCode={null}
         selectionKeyCode={null}
@@ -561,8 +573,11 @@ function CanvasInner() {
       >
         <Background variant={BackgroundVariant.Dots} gap={18} size={1.2} color="#cbd5e1" />
         <Controls position="bottom-right" showInteractive={false} />
-        <MiniMap position="bottom-right" style={{ width: 150, height: 96, marginRight: 52 }} pannable zoomable nodeStrokeWidth={2} nodeColor={(n) => (n.type === 'note' ? '#fde68a' : n.type === 'enum' ? '#a7f3d0' : '#c7d2fe')} />
+        <MiniMap position="bottom-right" style={{ width: 150, height: 96, marginRight: 52 }} pannable zoomable nodeStrokeWidth={2} nodeColor={(n) => (n.type === 'peer' ? (n.data as { color: string }).color : n.type === 'note' ? '#fde68a' : n.type === 'enum' ? '#a7f3d0' : '#c7d2fe')}
+          nodeBorderRadius={6} />
       </ReactFlow>
+      <RemoteCursors />
+      <FollowBanner />
       <Toolbar />
       <Inspector />
       <Legend />

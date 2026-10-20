@@ -7,6 +7,12 @@ import type { NoteBlock } from '@erd/model/types';
 import { resizeNode, updateNote } from '../../store/actions';
 import { useUi } from '../../store/useUi';
 import { downloadNote } from '../../persistence/notes';
+import * as Y from 'yjs';
+import { roots } from '@erd/crdt';
+import { useSession } from '../../collab/useSession';
+import { CodeEditor } from '../../editors/CodeEditor';
+import { LANGUAGES } from '../../editors/languages';
+import { NodeDecor } from '../../collab/presence/NodeDecor';
 
 export type NoteFlowNode = Node<{ note: NoteBlock }, 'note'>;
 
@@ -47,12 +53,20 @@ function NoteNodeImpl({ id, data, selected }: NodeProps<NoteFlowNode>) {
   const rootRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const c = NOTE_COLORS[note.color ?? 'yellow'] ?? NOTE_COLORS.yellow;
+  const session = useSession();
+  const showAuthorship = useUi((s) => s.showAuthorship);
+  // o conteúdo da nota é um Y.Text: editado direto pelo y-codemirror, com cursores e rastro dos outros (§5.3)
+  const ytext = useMemo(() => {
+    const t = session ? roots(session.doc).notes.get(id)?.get('content') : undefined;
+    return t instanceof Y.Text ? t : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, id, editing]);
 
   useEffect(() => {
     if (editing) {
       setDraft(note.content);
       setTitle(note.title);
-      setTimeout(() => ta.current?.focus(), 0);
+      setTimeout(() => (ta.current ?? rootRef.current?.querySelector<HTMLElement>('.cm-content'))?.focus(), 0);
     }
     // só ao entrar em modo de edição
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -74,6 +88,11 @@ function NoteNodeImpl({ id, data, selected }: NodeProps<NoteFlowNode>) {
   }, [id, note.content, editing]);
 
   const finish = () => {
+    if (ytext) {
+      if (title !== note.title) updateNote(id, (n) => void (n.title = title.trim() || 'Nota'));
+      useUi.getState().set({ editing: null });
+      return;
+    }
     if (draft !== note.content || title !== note.title)
       updateNote(id, (n) => {
         n.content = draft;
@@ -156,6 +175,8 @@ function NoteNodeImpl({ id, data, selected }: NodeProps<NoteFlowNode>) {
   };
 
   return (
+    <>
+    <NodeDecor id={id} radius={8} />
     <div
       ref={rootRef}
       className={'erd-note flex h-full w-full flex-col overflow-hidden rounded-lg border shadow-sm ' + (selected ? 'ring-2 ring-indigo-200' : '')}
@@ -173,6 +194,11 @@ function NoteNodeImpl({ id, data, selected }: NodeProps<NoteFlowNode>) {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             onKeyDown={(e) => e.stopPropagation()}
+            onBlur={() =>
+              setTimeout(() => {
+                if (ytext && !rootRef.current?.contains(document.activeElement)) finish();
+              }, 0)
+            }
           />
         ) : (
           <span className="truncate text-[12px] font-semibold text-slate-700">📝 {note.title}</span>
@@ -188,7 +214,27 @@ function NoteNodeImpl({ id, data, selected }: NodeProps<NoteFlowNode>) {
           <Download size={13} />
         </button>
       </div>
-      {editing ? (
+      {editing && ytext ? (
+        <div
+          className="nodrag nopan nowheel min-h-0 flex-1 overflow-auto"
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          <CodeEditor
+            ytext={ytext}
+            awareness={session?.awareness}
+            language={LANGUAGES.markdown}
+            minimal
+            authorship={showAuthorship}
+            className="h-full [&_.cm-editor]:bg-transparent"
+            onExit={finish}
+            onBlur={() =>
+              setTimeout(() => {
+                if (!rootRef.current?.contains(document.activeElement)) finish();
+              }, 0)
+            }
+          />
+        </div>
+      ) : editing ? (
         <textarea
           ref={ta}
           className="nodrag nopan nowheel h-full w-full flex-1 resize-none bg-transparent p-2.5 font-mono text-[12px] outline-none"
@@ -203,6 +249,7 @@ function NoteNodeImpl({ id, data, selected }: NodeProps<NoteFlowNode>) {
         </div>
       )}
     </div>
+    </>
   );
 }
 

@@ -21,6 +21,8 @@ interface UiState {
   jumpToTable: { id: Id; nonce: number } | null;
   /** Seleção a restaurar no canvas (ex.: junto com um undo) */
   selectionRequest: { nodes: Id[]; edges: Id[]; nonce: number } | null;
+  /** "Mostrar autoria" (§5.5): pinta cada entidade e trecho de texto com a cor de quem editou por último */
+  showAuthorship: boolean;
   set: (p: Partial<UiState>) => void;
 }
 
@@ -38,6 +40,7 @@ export const useUi = create<UiState>((set) => ({
   toast: null,
   jumpToTable: null,
   selectionRequest: null,
+  showAuthorship: false,
   // no modo visualização nada entra em edição inline (a API e o collab recusariam de qualquer forma)
   set: (p) => set(p.editing && useProjectStore.getState().readOnly ? { ...p, editing: null } : p),
 }));

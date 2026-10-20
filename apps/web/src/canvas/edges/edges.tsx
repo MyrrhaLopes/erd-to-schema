@@ -22,6 +22,8 @@ export type ErdEdgeData = {
   emphasized?: boolean;
   /** Não toca a tabela selecionada nem suas relações diretas — apaga */
   dimmed?: boolean;
+  /** Selecionada por outra pessoa: o traço na cor dela */
+  peerColor?: string;
 };
 export type ErdEdge = Edge<ErdEdgeData, 'erd'>;
 
@@ -185,8 +187,8 @@ function ErdEdgeImpl({ id, sourceX, sourceY, targetX, targetY, sourcePosition, t
         markerStart={data?.start && data.start !== 'none' ? `url(#${markerId(data.start, colorKey)})` : undefined}
         markerEnd={data?.end && data.end !== 'none' ? `url(#${markerId(data.end, colorKey)})` : undefined}
         style={{
-          stroke: COLORS[colorKey],
-          strokeWidth: emphasized ? 2.2 : 1.5,
+          stroke: !selected && data?.peerColor ? data.peerColor : COLORS[colorKey],
+          strokeWidth: emphasized || data?.peerColor ? 2.2 : 1.5,
           strokeDasharray: dash,
           opacity: dimmed ? 0.3 : variant === 'enum' && !emphasized ? 0.65 : 1,
           transition: 'opacity 0.15s, stroke 0.15s',

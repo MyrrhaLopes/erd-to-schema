@@ -6,6 +6,7 @@ import { formatType, parseTypeString, COMMON_TYPES } from '@erd/model/columnType
 import { addColumn, resizeNode, updateTable } from '../../store/actions';
 import { useUi, revealTableInCode } from '../../store/useUi';
 import { useProjectStore } from '../../store/useProjectStore';
+import { NodeDecor, useColumnDecor } from '../../collab/presence/NodeDecor';
 
 export type TableNodeData = {
   table: Table;
@@ -60,10 +61,13 @@ function ColumnRow({ table, col, isFk }: { table: Table; col: Column; isFk: bool
   const edit = editing?.kind === 'column' && editing.colId === col.id;
   const [field, setField] = useState<'name' | 'type'>('name');
   const done = () => useUi.getState().set({ editing: null });
+  const decor = useColumnDecor(table.id, col.id);
 
   return (
     <div
       className="group/col relative flex h-[26px] items-center gap-1.5 px-2.5 text-[12px] hover:bg-slate-50"
+      style={decor.style}
+      title={decor.title}
       onDoubleClick={(e) => {
         e.stopPropagation();
         setField((e.target as HTMLElement).dataset.field === 'type' ? 'type' : 'name');
@@ -138,6 +142,7 @@ function TableNodeImpl({ id, data, selected }: NodeProps<TableFlowNode>) {
         revealTableInCode(table.id);
       }}
     >
+      <NodeDecor id={id} />
       {/* fora do cabeçalho (que tem `relative`) para ancorar no topo/base do card inteiro, não só do cabeçalho */}
       <Handle type="source" id={`${id}-hT`} position={Position.Top} className="erd-handle erd-handle-head" title="Relação-nota (topo)" />
       {selected && !readOnly && (

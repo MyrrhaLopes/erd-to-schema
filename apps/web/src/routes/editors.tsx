@@ -9,7 +9,9 @@ import '../kinds/erd';
 import { openLocalSession } from '../collab/local';
 import { openRemoteSession } from '../collab/remote';
 import { activateSession, deactivateSession } from '../collab/openCanvas';
-import { keys, useMe, useProject } from '../api/queries';
+import { keys, useMe, useMembers, useProject } from '../api/queries';
+import { colorOf } from '@erd/contracts';
+import { useDirectory } from '../collab/presence';
 import { useQueryClient } from '@tanstack/react-query';
 import { showToast } from '../store/useUi';
 import { ApiError } from '../api/client';
@@ -83,6 +85,12 @@ export function CanvasEditor() {
   useEffect(() => {
     if (p) useEditorContext.getState().set({ mode: 'remote', project: p, canvasId });
   }, [p, canvasId]);
+
+  // diretório de pessoas do projeto (nome e cor de cada membro): autoria e erros com dono de quem não está online
+  const members = useMembers(projectId, !!p);
+  useEffect(() => {
+    if (members.data) useDirectory.getState().add(members.data.members.map((m) => ({ id: m.userId, name: m.name, color: colorOf(m.color) })));
+  }, [members.data]);
 
   useEffect(() => {
     if (project.error instanceof ApiError && project.error.status === 404) void nav({ to: '/' });

@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { NotificationsBell } from './Notifications';
 import { ShareDialog } from './sharing';
+import { PeerAvatars } from '../collab/presence/CanvasPresence';
 import { useProjectStore, getProject, undo, redo } from '../store/useProjectStore';
 import { useUi, showToast } from '../store/useUi';
 import { allTags } from '@erd/model/tags';
@@ -84,6 +85,17 @@ function Check({ checked, onChange, label, sub }: { checked: boolean; onChange: 
   );
 }
 
+/** "Mostrar autoria" (§5.5): cada tabela, coluna, nota e trecho de texto na cor de quem editou por último */
+function AuthorshipToggle() {
+  const on = useUi((s) => s.showAuthorship);
+  const set = useUi((s) => s.set);
+  return (
+    <div className="mb-1 border-b border-slate-100 pb-1">
+      <Check checked={on} onChange={(v) => set({ showAuthorship: v })} label="Mostrar autoria" sub="quem editou" />
+    </div>
+  );
+}
+
 function ViewFilters() {
   const view = useProjectStore((s) => s.view);
   const doc = useProjectStore((s) => s.doc);
@@ -99,6 +111,7 @@ function ViewFilters() {
   return (
     <div className="w-64">
       <div className="px-2 pb-1 pt-1.5 text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">Mostrar</div>
+      <AuthorshipToggle />
       <Check checked={view.showNoteRelations} onChange={(v) => setView((x) => void (x.showNoteRelations = v))} label="Relações-nota" sub="tracejadas" />
       <Check checked={view.showNotes} onChange={(v) => setView((x) => void (x.showNotes = v))} label="Blocos de nota" sub={String(doc.notes.length)} />
       <Check checked={view.showEnums && !view.hiddenTags.includes('enum')} onChange={(v) => setView((x) => void ((x.showEnums = v), (x.hiddenTags = x.hiddenTags.filter((t) => t !== 'enum'))))} label="Enums" sub={String(doc.schema.enums.length)} />
@@ -338,6 +351,7 @@ export function Header() {
         <ConnectionBadge />
         {mode === 'remote' && project && (
           <>
+            <PeerAvatars />
             <NotificationsBell />
             <Link to="/p/$projectId/settings" params={{ projectId: project.id }} title="Configurações do projeto" className="rounded p-1.5 text-slate-500 hover:bg-slate-100" data-testid="project-settings">
               <Settings size={16} />

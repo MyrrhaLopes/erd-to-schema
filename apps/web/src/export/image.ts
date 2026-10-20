@@ -16,7 +16,9 @@ const PADDING = 40;
 
 /** Renderiza a seleção (ou tudo) via html-to-image sobre `.react-flow__viewport` */
 export async function renderPng(opts: ExportOptions): Promise<{ dataUrl: string; width: number; height: number }> {
-  const target = opts.onlySelected && opts.nodes.some((n) => n.selected) ? opts.nodes.filter((n) => n.selected) : opts.nodes;
+  // pontos de presença (minimapa) não são do diagrama
+  const nodes = opts.nodes.filter((n) => n.type !== 'peer');
+  const target = opts.onlySelected && nodes.some((n) => n.selected) ? nodes.filter((n) => n.selected) : nodes;
   if (!target.length) throw new Error('Nada para exportar');
   const ids = new Set(target.map((n) => n.id));
   const keepEdge = new Set(opts.edges.filter((e) => ids.has(e.source) && ids.has(e.target)).map((e) => e.id));

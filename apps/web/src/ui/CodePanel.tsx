@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Copy, Download, PencilLine, Wand2, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Copy, Crosshair, Download, PencilLine, Wand2, XCircle } from 'lucide-react';
+import { useReactFlow } from '@xyflow/react';
 import type { Format, Project, Table } from '@erd/model/types';
 import { FORMATS, FORMAT_LABEL } from '@erd/model/types';
 import { codeText } from '@erd/crdt';
-import { GENERATORS } from '@erd/sync';
+import { GENERATORS, readSync, resolveRange } from '@erd/sync';
+import type { Id } from '@erd/model/types';
+import { setPresence, useDirectory, usePresence } from '../collab/presence';
+import type { EditorMark } from '../editors/CodeEditor';
 import { CodeEditor, type CodeEditorHandle } from '../editors/CodeEditor';
 import { LANGUAGES } from '../editors/languages';
 import { usePanels } from '../sync/panels';
@@ -98,7 +102,66 @@ export function CodePanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jumpToTable]);
 
-  const marks = useMemo(() => panel.divergent.map((d) => ({ from: d.from, to: d.to, className: 'erd-divergent' })), [panel.divergent]);
+  const showAuthorship = useUi((s) => s.showAuthorship);
+  const peerNodes = usePresence((s) => s.nodes);
+  const people = useDirectory((s) => s.people);
+  const me = useDirectory((s) => s.me);
+
+  // source map (§5.4): blocos do texto atual e as entidades que cada um define, do último parse do bot
+  const blocks = useMemo(() => {
+    if (!session) return [];
+    const out: { from: number; to: number; ids: Id[] }[] = [];
+    for (const b of readSync(session.doc, tab)?.blocks ?? []) {
+      const r = resolveRange(session.doc, b);
+      if (r) out.push({ ...r, ids: b.ids });
+    }
+    return out;
+    // o texto e o estado do bot mudam juntos com `text`/`panel`
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, tab, text, panel]);
+
+  // em qual aba esta pessoa está (bolinhas no seletor de abas dos outros)
+  useEffect(() => {
+    setPresence(session, { panel: { format: tab } });
+    return () => setPresence(getSession(), { panel: null });
+  }, [session, tab]);
+
+  const [cursorEntity, setCursorEntity] = useState<Id | null>(null);
+  const onCursor = useCallback(
+    (offset: number | null) => {
+      const b = offset === null ? undefined : blocks.find((x) => offset >= x.from && offset <= x.to);
+      setPresence(getSession(), { panel: { format: tab, entityId: b?.ids[0] } });
+      if (offset !== null) setCursorEntity(b?.ids[0] ?? null);
+    },
+    [blocks, tab],
+  );
+  // ponte painel → canvas: centraliza e seleciona a tabela em que o cursor está
+  const rf = useReactFlow();
+  const revealInCanvas = () => {
+    if (!cursorEntity || !rf.getNode(cursorEntity)) return showToast('Essa entidade não está visível no diagrama');
+    set({ selectionRequest: { nodes: [cursorEntity], edges: [], nonce: Date.now() }, selectedNodes: [cursorEntity], selectedEdges: [] });
+    void rf.fitView({ nodes: [{ id: cursorEntity }], padding: 0.5, duration: 400, maxZoom: 1.2 });
+  };
+
+  const marks = useMemo(() => {
+    const out: EditorMark[] = panel.divergent.map((d) => ({ from: d.from, to: d.to, className: 'erd-divergent' }));
+    // faixa na margem na cor de quem está com a tabela selecionada no canvas
+    for (const b of blocks) {
+      const who = b.ids.map((id) => peerNodes.get(id)?.selectedBy[0]).find(Boolean);
+      if (who) out.push({ from: b.from, to: b.to, className: 'erd-peer-block', color: who.color });
+    }
+    return out;
+  }, [panel.divergent, blocks, peerNodes]);
+
+  // erros com dono (§5.4): o erro de um trecho que outra pessoa está escrevendo aparece como "em edição por Fulana"
+  const diagnostics = useMemo(
+    () =>
+      panel.diagnostics.map((d) => {
+        if (!d.author || d.author === me || d.severity !== 'error') return d;
+        return { ...d, severity: 'info' as const, message: `Em edição por ${people.get(d.author)?.name ?? 'outra pessoa'}: ${d.message}` };
+      }),
+    [panel.diagnostics, people, me],
+  );
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-white">
@@ -113,6 +176,7 @@ export function CodePanel() {
             }
           >
             {FORMAT_LABEL[f]}
+            <TabPeers f={f} />
             <TabDot f={f} />
           </button>
         ))}
@@ -120,6 +184,11 @@ export function CodePanel() {
       <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-1.5">
         <StatusBadge f={tab} />
         <div className="ml-auto flex items-center gap-0.5">
+          {cursorEntity && (
+            <button title="Ver no diagrama a tabela onde está o cursor" className="flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-indigo-600 hover:bg-indigo-50" onClick={revealInCanvas} data-testid="reveal-in-canvas">
+              <Crosshair size={13} /> Ver no diagrama
+            </button>
+          )}
           {!readOnly && (
             <button
               title="Formatar no padrão canônico (Shift+Alt+F) — apaga a formatação própria e os comentários livres"
@@ -174,8 +243,10 @@ export function CodePanel() {
           ytext={codeText(session.doc, tab)}
           awareness={session.awareness}
           language={LANGUAGES[tab]}
-          diagnostics={panel.diagnostics}
+          diagnostics={diagnostics}
           marks={marks}
+          authorship={showAuthorship}
+          onCursor={onCursor}
           readOnly={readOnly}
           onSave={onSave}
           onBlur={onSave}
@@ -184,9 +255,9 @@ export function CodePanel() {
           revealToken={jumpToTable?.nonce}
         />
       )}
-      {panel.diagnostics.length > 0 && (
-        <div className="max-h-28 overflow-y-auto border-t border-slate-200 bg-slate-50 px-3 py-1.5 text-[11.5px]">
-          {panel.diagnostics.map((d, i) => (
+      {diagnostics.length > 0 && (
+        <div className="max-h-28 overflow-y-auto border-t border-slate-200 bg-slate-50 px-3 py-1.5 text-[11.5px]" data-testid="diagnostics">
+          {diagnostics.map((d, i) => (
             <div key={i} className={d.severity === 'error' ? 'text-red-700' : d.severity === 'warning' ? 'text-amber-700' : 'text-slate-500'}>
               {d.severity === 'error' ? '✖' : d.severity === 'warning' ? '⚠' : 'ℹ'} {lineOf(text, d.from)}: {d.message}
             </div>
@@ -197,6 +268,19 @@ export function CodePanel() {
         Edite qualquer vista: o canvas e as outras duas se atualizam. Ctrl+S aplica na hora. Conceitos só do canvas ficam em comentários <code>@erd:</code>.
       </div>
     </div>
+  );
+}
+
+/** Quem está em cada aba (bolinhas na cor de cada pessoa) */
+function TabPeers({ f }: { f: Format }) {
+  const peers = usePresence((s) => s.panels.get(f));
+  if (!peers?.length) return null;
+  return (
+    <span className="ml-1.5 inline-flex -space-x-0.5 align-middle" data-testid={`tab-peers-${f}`}>
+      {peers.slice(0, 4).map((p) => (
+        <span key={p.clientId} title={p.name} className="inline-block h-2 w-2 rounded-full ring-1 ring-white" style={{ background: p.color }} />
+      ))}
+    </span>
   );
 }
 

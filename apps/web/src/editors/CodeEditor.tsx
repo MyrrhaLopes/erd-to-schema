@@ -2,7 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import * as Y from 'yjs';
 import type { Awareness } from 'y-protocols/awareness';
 import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next';
-import { EditorState, RangeSetBuilder, StateEffect, StateField, type Extension } from '@codemirror/state';
+import { EditorState, Prec, RangeSetBuilder, StateEffect, StateField, type Extension } from '@codemirror/state';
 import {
   Decoration,
   EditorView,
@@ -23,6 +23,7 @@ import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
 import { lintGutter, lintKeymap, setDiagnostics, type Diagnostic as CmDiagnostic } from '@codemirror/lint';
 import type { Diagnostic } from '@erd/model/formats/common';
+import { bindAuthorship, bindTypingTrail, collabDecorations } from './collabDecor';
 
 interface Props {
   /** Texto compartilhado: a digitação vai direto para o Y.Text (y-codemirror.next) */
@@ -30,8 +31,8 @@ interface Props {
   awareness?: Awareness;
   language: Extension;
   diagnostics?: Diagnostic[];
-  /** Trechos realçados (ex.: blocos divergentes) */
-  marks?: { from: number; to: number; className: string }[];
+  /** Trechos realçados (ex.: blocos divergentes; faixa na cor de quem seleciona a tabela) */
+  marks?: EditorMark[];
   onSave?: () => void;
   onBlur?: () => void;
   onFormat?: () => void;
@@ -40,6 +41,22 @@ interface Props {
   /** Posição (offset) a rolar e selecionar — só dispara quando `revealToken` muda */
   revealOffset?: number | null;
   revealToken?: number | null;
+  /** Sem gutters (editor de nota) */
+  minimal?: boolean;
+  /** Esc ou Ctrl+Enter: sair do editor */
+  onExit?: () => void;
+  /** "Mostrar autoria": pinta cada trecho com a cor de quem o escreveu */
+  authorship?: boolean;
+  /** Posição do cursor (ou `null` ao sair do editor), para a ponte painel ⇄ canvas */
+  onCursor?: (offset: number | null) => void;
+}
+
+export interface EditorMark {
+  from: number;
+  to: number;
+  className: string;
+  /** Faixa na margem esquerda, na cor de alguém */
+  color?: string;
 }
 
 export interface CodeEditorHandle {
@@ -56,7 +73,7 @@ const theme = EditorView.theme({
   '.erd-divergent': { backgroundColor: '#fef3c7', boxShadow: 'inset 3px 0 0 #f59e0b' },
 });
 
-const setMarks = StateEffect.define<{ from: number; to: number; className: string }[]>();
+const setMarks = StateEffect.define<EditorMark[]>();
 const marksField = StateField.define<DecorationSet>({
   create: () => Decoration.none,
   update(deco, tr) {
@@ -71,7 +88,7 @@ const marksField = StateField.define<DecorationSet>({
         // decoração de linha em cada linha do trecho
         for (let pos = from; pos <= to; ) {
           const line = tr.state.doc.lineAt(pos);
-          b.add(line.from, line.from, Decoration.line({ class: m.className }));
+          b.add(line.from, line.from, Decoration.line({ class: m.className, attributes: m.color ? { style: `box-shadow: inset 3px 0 0 ${m.color}` } : undefined }));
           if (line.to >= to) break;
           pos = line.to + 1;
         }
@@ -103,14 +120,23 @@ const setup: Extension = [
   keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...foldKeymap, ...lintKeymap]),
 ];
 
+/** Editor de nota: sem números de linha nem dobras */
+const minimalSetup: Extension = [
+  highlightSpecialChars(),
+  drawSelection(),
+  dropCursor(),
+  syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+  keymap.of([...defaultKeymap, ...searchKeymap]),
+];
+
 export const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEditor(
-  { ytext, awareness, language, diagnostics, marks, onSave, onBlur, onFormat, readOnly, className, revealOffset, revealToken },
+  { ytext, awareness, language, diagnostics, marks, onSave, onBlur, onFormat, readOnly, className, revealOffset, revealToken, minimal, onExit, authorship, onCursor },
   ref,
 ) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
-  const handlers = useRef({ onSave, onBlur, onFormat });
-  handlers.current = { onSave, onBlur, onFormat };
+  const handlers = useRef({ onSave, onBlur, onFormat, onExit, onCursor });
+  handlers.current = { onSave, onBlur, onFormat, onExit, onCursor };
 
   useImperativeHandle(ref, () => ({
     replaceAll(text: string) {
@@ -137,14 +163,29 @@ export const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEdito
       state: EditorState.create({
         doc: ytext.toString(),
         extensions: [
-          setup,
+          minimal ? minimalSetup : setup,
           language,
-          lintGutter(),
+          minimal ? [] : lintGutter(),
+          collabDecorations,
+          minimal ? EditorView.lineWrapping : [],
           theme,
           marksField,
           EditorState.readOnly.of(!!readOnly),
           EditorView.editable.of(!readOnly),
           yCollab(ytext, awareness ?? null, { undoManager }),
+          // sair do editor (notas) vence o Ctrl+Enter/Esc padrões do CodeMirror
+          Prec.highest(
+            keymap.of(
+              ['Escape', 'Mod-Enter'].map((key) => ({
+                key,
+                run: () => {
+                  if (!handlers.current.onExit) return false;
+                  handlers.current.onExit();
+                  return true;
+                },
+              })),
+            ),
+          ),
           keymap.of([
             ...yUndoManagerKeymap,
             indentWithTab,
@@ -168,19 +209,31 @@ export const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEdito
           EditorView.domEventHandlers({
             blur: () => {
               handlers.current.onBlur?.();
+              handlers.current.onCursor?.(null);
               return false;
             },
+          }),
+          EditorView.updateListener.of((u) => {
+            if ((u.selectionSet || u.focusChanged) && u.view.hasFocus) handlers.current.onCursor?.(u.state.selection.main.head);
           }),
         ],
       }),
     });
     view.current = v;
+    const offTrail = bindTypingTrail(v, ytext, awareness);
     return () => {
+      offTrail();
       v.destroy();
       undoManager.destroy();
       view.current = null;
     };
-  }, [ytext, awareness, language, readOnly]);
+  }, [ytext, awareness, language, readOnly, minimal]);
+
+  useEffect(() => {
+    const v = view.current;
+    if (!v || !authorship) return;
+    return bindAuthorship(v, ytext, awareness);
+  }, [authorship, ytext, awareness, readOnly, minimal]);
 
   useEffect(() => {
     const v = view.current;
