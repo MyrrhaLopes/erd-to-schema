@@ -52,6 +52,54 @@ sequenceDiagram
 
 ---
 
+## Fluxos (visão geral)
+
+**O canvas é a única fonte de verdade. O arquivo no Drive é só uma "foto" de uma versão do canvas.** O histórico fica no versionamento de canvas, que já existe. O Drive guarda só a foto mais recente.
+
+### As três camadas
+
+| Camada | O que é | Já existe? |
+|---|---|---|
+| **Canvas** | O modelo que todo mundo edita: canvas, SQL, Prisma, Drizzle, notas, tags e, agora, o formulário do documento (§1.4). | Sim |
+| **Versões do canvas** | Cópias completas do canvas num momento: as que alguém salva com nome, uma automática por dia (as automáticas saem depois de 30 dias) e, agora, uma a cada publicação, protegida contra exclusão (§3.2). | Sim; só entra o tipo "publicação" |
+| **Documento no Drive** | Um único arquivo .docx bloqueado, gerado a partir de uma versão do canvas. O Drive guarda só o atual (§3.2, passo 8). | Novo |
+
+O **histórico de publicações** (§7) liga as duas últimas camadas. Cada linha diz "a v8 do documento foi gerada da versão X do canvas, por Fulana, em tal data". Só metadados.
+
+### Os fluxos
+
+1. **Editar o modelo**: como hoje. Mexer no canvas ou nos painéis de código não muda nada no Drive. O botão "Salvar no Drive" ganha um ponto de alerta quando o canvas está diferente da última publicação.
+2. **Preencher o formulário** (capa, convenções, regras, funções das relações, descrições; §1.4): é uma edição do canvas como qualquer outra. Por isso também entra nas versões do canvas e não vai para o Drive sozinho.
+3. **Publicar** (dono ou editor; §3):
+   1. "Salvar no Drive" abre a tela de revisão (módulos, tabelas, pendências, pré-visualização).
+   2. A pessoa confirma.
+   3. O app salva uma versão do canvas "Publicação v8", protegida.
+   4. Gera o .docx a partir dela e substitui o arquivo no Drive (mesmo arquivo, mesmo link).
+   5. Registra no histórico de publicações.
+4. **Voltar atrás** (§4): não é um mecanismo separado, é a soma de dois fluxos que já existem ou já estão acima.
+   - **Restaurar uma versão do canvas** (já existe): muda só o canvas, para todos e com Ctrl+Z disponível. O Drive continua igual até alguém publicar.
+   - **"Reverter para a publicação v5"** é um atalho: restaura a versão do canvas ligada à v5 e abre a tela de revisão. Ao confirmar, sai uma publicação nova (v9) com o conteúdo da v5.
+5. **Trocar a pasta** (só o dono; §5): o mesmo conteúdo muda de lugar. O arquivo é criado na pasta nova e o antigo é excluído definitivamente. Nenhuma versão nova é criada; o histórico registra a troca.
+6. **Transferir a posse** (já existe; §6): o documento continua sendo publicado no Drive do dono antigo até o novo dono conectar o Drive dele e escolher uma pasta. Daí roda o fluxo 5, só que entre contas.
+7. **Vigilância** (automática; §8.2): se alguém editar ou desbloquear o arquivo pelo Drive, o app bloqueia de novo, avisa o dono e a próxima publicação sobrescreve. Pelo Drive não dá para "voltar versão", porque o app apaga as revisões antigas que o Drive guarda.
+
+### Exemplo numa semana
+
+| Dia | O que acontece | Versões do canvas | Drive |
+|---|---|---|---|
+| Seg | Edita e publica | + "Publicação v1" | v1 |
+| Ter | Edita mais (sem publicar) | + automática do dia | v1, com alerta "mudanças não publicadas" |
+| Qua | Publica | + "Publicação v2" | v2 |
+| Qui | Restaura a versão automática de terça, só para conferir | — | v2 (nada muda) |
+| Qui | Clica "Reverter para a v1" e confirma a revisão | + "Publicação v3" | v3, com o mesmo conteúdo da v1 |
+| Sex | O dono troca a pasta | — | v3, agora na pasta nova; o arquivo da pasta antiga foi excluído |
+
+O número da versão do documento **só sobe quando alguém publica** e nunca é reaproveitado. Por isso a reversão vira a v3, e não "volta a ser a v1".
+
+**O que é novo de verdade** é o fluxo 3: tela de revisão, geração do .docx e envio. O fluxo 4 reaproveita o restaurar que já existe, e os fluxos 5 e 6 são variações de "criar num lugar, apagar no outro".
+
+---
+
 ## 1. O documento
 
 ### 1.1 Especificação visual (medida no XML do documento de referência)
