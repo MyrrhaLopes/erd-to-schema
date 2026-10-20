@@ -11,7 +11,9 @@ interface PickerNs {
     setSelectFolderEnabled(v: boolean): unknown;
     setIncludeFolders(v: boolean): unknown;
     setMimeTypes(m: string): unknown;
+    setParent(id: string): unknown;
     setEnableDrives?(v: boolean): unknown;
+    setLabel?(l: string): unknown;
   };
   PickerBuilder: new () => PickerBuilder;
   Feature: { SUPPORT_DRIVES: string };
@@ -23,6 +25,7 @@ interface PickerBuilder {
   setAppId(id: string): PickerBuilder;
   enableFeature(f: string): PickerBuilder;
   setTitle(t: string): PickerBuilder;
+  setLocale(l: string): PickerBuilder;
   setCallback(cb: (data: { action: string; docs?: { id: string; name: string }[] }) => void): PickerBuilder;
   build(): { setVisible(v: boolean): void };
 }
@@ -54,15 +57,26 @@ function loadPicker(): Promise<PickerNs> {
 export async function pickGoogleFolder(cfg: DriveConfig, token: string): Promise<{ id: string; name: string } | null> {
   const picker = await loadPicker();
   return new Promise((resolve) => {
-    const view = new picker.DocsView(picker.ViewId.FOLDERS);
-    view.setSelectFolderEnabled(true);
-    view.setIncludeFolders(true);
-    view.setMimeTypes('application/vnd.google-apps.folder');
-    view.setEnableDrives?.(true);
+    const folders = (label: string) => {
+      const v = new picker.DocsView(picker.ViewId.FOLDERS);
+      v.setSelectFolderEnabled(true);
+      v.setIncludeFolders(true);
+      v.setMimeTypes('application/vnd.google-apps.folder');
+      v.setLabel?.(label);
+      return v;
+    };
+    // duas abas: `setEnableDrives` transforma a view na de drives compartilhados, então numa
+    // view só o Meu Drive sumia do seletor
+    const mine = folders('Meu Drive');
+    mine.setParent('root');
+    const shared = folders('Drives compartilhados');
+    shared.setEnableDrives?.(true);
     new picker.PickerBuilder()
-      .addView(view)
+      .addView(mine)
+      .addView(shared)
       .enableFeature(picker.Feature.SUPPORT_DRIVES)
       .setTitle('Escolha a pasta do documento')
+      .setLocale('pt-BR')
       .setOAuthToken(token)
       .setDeveloperKey(cfg.pickerApiKey ?? '')
       .setAppId(cfg.appId ?? '')
