@@ -19,6 +19,10 @@ export default defineConfig({
   clean: true,
   // o build falha se o bundle importar um pacote que não está em `dependencies` (não chegaria na imagem)
   deps: { neverBundle: true, alwaysBundle: [/^@erd\//], onlyImport: Object.keys(pkg.dependencies).filter((d) => !d.startsWith('@erd/')) },
-  copy: [{ from: '../../packages/db/migrations', to: 'dist' }],
+  copy: [
+    { from: '../../packages/db/migrations', to: 'dist' },
+    // o bundle que roda dentro do isolate do sandbox do Drizzle
+    { from: '../../packages/sandbox/dist/isolate.iife.js', to: 'dist' },
+  ],
   fixedExtension: false,
 });

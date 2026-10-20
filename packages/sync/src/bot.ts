@@ -495,9 +495,11 @@ export class SyncBot {
           continue;
         }
         let bi = blockAt(blocks, o.pos);
-        // erro no primeiro token de um bloco (ex.: `syntax error at or near "CREATE"`):
-        // quem não terminou foi o bloco anterior
-        if (bi > 0 && o.pos <= blocks[bi].from) bi--;
+        // erro no espaço entre dois blocos: se o anterior terminou, o problema é o próximo
+        if (bi >= 0 && o.pos > blocks[bi].to && bi + 1 < blocks.length && /[;}]$/.test(text.slice(blocks[bi].from, blocks[bi].to))) bi++;
+        // erro no primeiro token de um bloco (ex.: `syntax error at or near "CREATE"`): se o
+        // bloco anterior não terminou (sem `;`/`}`), a culpa é dele; senão, o próprio bloco começa errado
+        if (bi > 0 && o.pos <= blocks[bi].from && !/[;}]$/.test(text.slice(blocks[bi - 1].from, blocks[bi - 1].to))) bi--;
         while (bi >= 0 && subst.has(bi)) bi--;
         if (bi < 0) continue;
         const b = blocks[bi];
@@ -507,6 +509,26 @@ export class SyncBot {
         progressed = true;
       }
       if (!progressed) break;
+    }
+
+    // erros em cascata podem ter mascarado blocos inocentes: tenta devolver cada um (o mais
+    // antigo primeiro) e fica com ele se o texto continuar parseando
+    if (parsed && broken.size > 1) {
+      for (const i of [...broken.keys()]) {
+        const keep = subst.get(i)!;
+        subst.delete(i);
+        const c2 = compose(text, blocks, subst);
+        const r2 = await this.opts.parse(f, c2.text);
+        if (this.invalidated(f, text, rev)) {
+          if (!this.timers[f]) this.pending.add(f);
+          return;
+        }
+        if (r2.ok) {
+          parsed = r2.parsed;
+          comp = c2;
+          broken.delete(i);
+        } else subst.set(i, keep);
+      }
     }
 
     if (!parsed) {

@@ -2,7 +2,7 @@ import type pg from 'pg';
 import { and, canvases, type Db, eq, isNull, projectMembers, projects } from '@erd/db';
 import { HTTPException } from 'hono/http-exception';
 import { can, defaultSettings, type Action, type ProjectSettings, type Role } from '@erd/contracts';
-import type { CanvasStore } from '@erd/collab';
+import type { CanvasStore, Collab } from '@erd/collab';
 import type { Auth, SessionUser } from './auth';
 import type { Env } from './env';
 import type { Logger } from './log';
@@ -30,6 +30,8 @@ export interface Deps {
   store: CanvasStore;
   writer: CanvasWriter;
   events: Events;
+  /** Servidor de colaboração no mesmo processo (ausente nos testes que não precisam dele) */
+  collab?: Collab;
 }
 
 export type AppEnv = { Variables: { user: SessionUser | null } };
@@ -61,6 +63,15 @@ export async function projectAccess(db: Db, projectId: string, userId: string): 
   if (settings.linkSharing === 'view') return { project: row.project, role: 'viewer', color: hashColor(userId), member: false, settings };
   // não revela que o projeto existe
   throw new HTTPException(404, { message: 'Projeto não encontrado' });
+}
+
+/** Papel atual (ou viewer pelo link), ou `null` sem acesso — usado também pelo collab ao autenticar */
+export async function roleOf(db: Db, projectId: string, userId: string): Promise<Role | null> {
+  try {
+    return (await projectAccess(db, projectId, userId)).role;
+  } catch {
+    return null;
+  }
 }
 
 export async function canvasAccess(db: Db, canvasId: string, userId: string) {

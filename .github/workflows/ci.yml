@@ -61,6 +61,8 @@ jobs:
         env:
           URL: http://localhost:8081
           CI: 'true'
+          # o teste de redeploy reinicia o servidor no meio de uma edição
+          REDEPLOY_CMD: docker compose --profile prod restart server
       - if: failure()
         run: docker compose --profile prod logs
       - if: failure()

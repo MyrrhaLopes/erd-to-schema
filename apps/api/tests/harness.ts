@@ -1,6 +1,7 @@
 import { createTestDatabase } from '@erd/db/testing';
 import { createApp } from '../src/app';
-import { createDeps } from '../src/deps';
+import { serve } from '@hono/node-server';
+import { createDeps, wirePermissionEvents } from '../src/deps';
 import { loadEnv } from '../src/env';
 import { MemoryMailer } from '../src/mailer';
 import { createLogger } from '../src/log';
@@ -8,7 +9,7 @@ import type { Deps } from '../src/context';
 
 export const APP_URL = 'http://app.test';
 
-export async function harness(overrides: Partial<Deps> = {}) {
+export async function harness(overrides: Partial<Deps> & { realtime?: boolean } = {}) {
   const t = await createTestDatabase();
   const env = loadEnv({
     NODE_ENV: 'test',
@@ -21,8 +22,27 @@ export async function harness(overrides: Partial<Deps> = {}) {
     INVITES_PER_HOUR: '5',
   });
   const mailer = new MemoryMailer();
-  const deps = createDeps(env, { db: t.db, pool: t.pool, mailer, log: createLogger('silent'), ...overrides });
+  const deps = createDeps(env, { db: t.db, pool: t.pool, mailer, log: createLogger('silent'), realtime: false, ...overrides });
   const app = createApp(deps);
+
+  /** Sobe um servidor HTTP de verdade (com o WebSocket do collab em /collab) numa porta livre */
+  async function listen() {
+    const server = await new Promise<import('node:http').Server>((resolve) => {
+      const s = serve({ fetch: app.fetch, port: 0, hostname: '127.0.0.1' }, () => resolve(s as unknown as import('node:http').Server));
+    });
+    deps.collab?.attach(server);
+    const unlisten = await wirePermissionEvents(deps);
+    const port = (server.address() as import('node:net').AddressInfo).port;
+    return {
+      http: `http://127.0.0.1:${port}`,
+      ws: `ws://127.0.0.1:${port}/collab`,
+      close: async () => {
+        await unlisten();
+        await deps.collab?.shutdown();
+        await new Promise((r) => server.close(r));
+      },
+    };
+  }
 
   /** Um navegador: guarda os cookies entre as requisições */
   function browser() {
@@ -84,5 +104,5 @@ export async function harness(overrides: Partial<Deps> = {}) {
     throw new Error(`nenhum e-mail para ${to}${subject ? ` (${subject})` : ''}`);
   }
 
-  return { ...t, env, deps, app, mailer, browser, signup, waitMail, close: () => t.drop() };
+  return { ...t, env, deps, app, mailer, browser, signup, waitMail, listen, close: () => t.drop() };
 }

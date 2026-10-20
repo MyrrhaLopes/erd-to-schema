@@ -5,6 +5,7 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { and, canvases, count, eq, isNull } from '@erd/db';
 import * as Y from 'yjs';
+import { SignJWT } from 'jose';
 import { UpdateCanvasZ } from '@erd/contracts';
 import { codeText, invalidEntities, projectDoc } from '@erd/crdt';
 import type { Format, Project } from '@erd/model/types';
@@ -70,6 +71,20 @@ export function canvasesRoutes(deps: Deps) {
         if ((n?.n ?? 0) <= 1) throw new HTTPException(422, { message: 'O projeto precisa de pelo menos um canvas' });
         await db.update(canvases).set({ deletedAt: new Date() }).where(eq(canvases.id, a.canvas.id));
         return c.json({ ok: true });
+      })
+
+      /** Token curto (5 min) para o WebSocket (§3): o Hocuspocus confere a assinatura e o canvas */
+      .post('/:id/collab-token', async (c) => {
+        const user = requireUser(c.get('user'));
+        const a = await canvasAccess(db, c.req.param('id'), user.id);
+        const expiresAt = Date.now() + 5 * 60_000;
+        const token = await new SignJWT({ canvasId: a.canvas.id, projectId: a.project.id, role: a.role, color: a.color, name: user.name })
+          .setProtectedHeader({ alg: 'HS256' })
+          .setSubject(user.id)
+          .setIssuedAt()
+          .setExpirationTime(Math.floor(expiresAt / 1000))
+          .sign(new TextEncoder().encode(deps.env.COLLAB_JWT_SECRET));
+        return c.json({ token, role: a.role, color: a.color, name: user.name, userId: user.id, expiresAt });
       })
 
       /** Estado completo (update Yjs) — carga inicial sem WebSocket e base dos exports */

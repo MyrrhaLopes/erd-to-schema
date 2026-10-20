@@ -34,8 +34,9 @@ export default defineConfig({
     ? undefined
     : [
         {
-          command: 'pnpm exec tsx prepare-db.ts && pnpm --filter @erd/api exec tsx src/main.ts',
+          command: 'pnpm exec tsx prepare-db.ts && pnpm --filter @erd/api... --filter !@erd/web run build && node --enable-source-maps ../apps/api/dist/main.js',
           url: 'http://localhost:8080/readyz',
+          stdout: 'pipe',
           reuseExistingServer: !process.env.CI,
           timeout: 120_000,
           env: {
@@ -48,7 +49,7 @@ export default defineConfig({
             COLLAB_JWT_SECRET: 'e2e-collab-e2e-collab-e2e-collab-e2e',
             MAIL_DRIVER: 'smtp',
             SMTP_URL: process.env.SMTP_URL ?? 'smtp://localhost:1025',
-            LOG_LEVEL: 'warn',
+            LOG_LEVEL: process.env.E2E_LOG_LEVEL ?? 'warn',
           },
         },
         {

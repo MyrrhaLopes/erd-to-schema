@@ -289,7 +289,9 @@ export async function parseSql(text: string, pgParse: PgParse): Promise<ParseOut
     ast = await pgParse(text);
   } catch (e: any) {
     const pos = e?.sqlDetails?.cursorPosition;
-    let from = typeof pos === 'number' && pos > 0 ? toChar(pos - 1) : 0;
+    // cursorPosition é o offset (em caracteres, 0-based) do token do erro — diferente do
+    // stmt_location dos statements, que vem em bytes
+    let from = typeof pos === 'number' && pos >= 0 ? pos : 0;
     if (from >= text.length) from = Math.max(0, text.length - 1);
     let to = from;
     while (to < text.length && /[\w"]/.test(text[to])) to++;

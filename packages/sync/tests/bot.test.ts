@@ -252,3 +252,16 @@ describe('sync bot — Prisma', () => {
     bot.stop();
   });
 });
+
+describe('sync bot — atribuição de erro', () => {
+  it('um token solto depois de um statement completo não congela o statement anterior', async () => {
+    const doc = await seeded();
+    const bot = newBot(doc);
+    await bot.whenIdle({ flushTimers: true });
+    typeAt(doc, 'sql', text(doc, 'sql').length, '\nCREATE TABLE logs (\n  id serial PRIMARY KEY\n);\n\n)');
+    await bot.whenIdle({ flushTimers: true });
+    expect(tableNames(doc)).toContain('logs');
+    expect(readSync(doc, 'sql')!.status).toBe('error');
+    bot.stop();
+  });
+});

@@ -1,0 +1,26 @@
+{
+  "name": "@erd/sandbox",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "vitest run",
+    "lint": "oxlint -c ../../.oxlintrc.json .",
+    "build": "tsdown"
+  },
+  "dependencies": {
+    "@erd/model": "workspace:*",
+    "isolated-vm": "^7.0.1"
+  },
+  "devDependencies": {
+    "@erd/config": "workspace:*",
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.4",
+    "tsdown": "^0.23.1"
+  }
+}

@@ -34,18 +34,17 @@ import {
   type Direction,
 } from '../store/actions';
 import { deriveEdges, deriveNodes } from './derive';
-import { TableNode, TypeDatalist } from './nodes/TableNode';
-import { EnumNode } from './nodes/EnumNode';
-import { NoteNode } from './nodes/NoteNode';
-import { ErdEdgeComponent, ErdMarkers, type ErdEdge } from './edges/edges';
-import { Toolbar } from './Toolbar';
-import { Inspector } from './Inspector';
+import { TypeDatalist } from './nodes/TableNode';
+import { ErdMarkers, type ErdEdge } from './edges/edges';
+import { erdKind } from '../kinds/erd';
 import { Legend } from './Legend';
 import { isTypingTarget } from './keyboard';
 import { tableById } from '@erd/model/schema';
+import { setPresence, throttle, usePresence } from '../collab/presence';
+import { getSession } from '../collab/session';
 
-const nodeTypes = { table: TableNode, enum: EnumNode, note: NoteNode };
-const edgeTypes = { erd: ErdEdgeComponent };
+// nós, arestas, toolbar e inspector vêm do tipo de canvas (§8.3)
+const { nodeTypes, edgeTypes, Toolbar, Inspector } = erdKind;
 
 const TOOL_KEYS: Record<string, ReturnType<typeof useProjectStore.getState>['tool']> = {
   v: 'select',
@@ -314,9 +313,19 @@ function CanvasInner() {
     }
   }, []);
 
+  // arraste (§4.5): durante o movimento a posição vai pela awareness (~30 Hz, efêmera);
+  // no fim, um único commit grava a posição final (uma entrada de undo, um update persistido)
+  const publishDrag = useMemo(() => throttle((items: { id: Id; x: number; y: number }[] | null) => setPresence(getSession(), { dragging: items }), 33), []);
+  const onNodeDrag = useCallback(
+    (_e: unknown, _n: Node, dragged: Node[]) => publishDrag(dragged.map((n) => ({ id: n.id, x: Math.round(n.position.x), y: Math.round(n.position.y) }))),
+    [publishDrag],
+  );
   const onNodeDragStop = useCallback((_e: unknown, _n: Node, dragged: Node[]) => {
     moveNodes(dragged.map((n) => ({ id: n.id, x: n.position.x, y: n.position.y })));
-  }, []);
+    publishDrag(null);
+    setTimeout(() => setPresence(getSession(), { dragging: null }), 60);
+  }, [publishDrag]);
+  const remoteDrags = usePresence((s) => s.drags);
 
   /**
    * Duplo clique numa relação: foca em uma das duas tabelas (não as duas de uma vez — mais fácil de ver).
@@ -479,8 +488,16 @@ function CanvasInner() {
         return highlightSet.has(n.id) ? n : { ...n, className: [n.className, 'erd-dimmed-node'].filter(Boolean).join(' ') };
       });
     }
+    if (remoteDrags.size) {
+      // nó que outra pessoa está arrastando: segue ao vivo, com a borda na cor dela
+      base = base.map((n) => {
+        const d = remoteDrags.get(n.id);
+        if (!d || n.dragging) return n;
+        return { ...n, position: { x: d.x, y: d.y }, style: { ...n.style, outline: `2px solid ${d.color}`, outlineOffset: 3, borderRadius: 10 }, draggable: false };
+      });
+    }
     return erasing?.size ? base.map((n) => (erasing.has(n.id) ? { ...n, className: 'erd-erasing' } : n)) : base;
-  }, [nodes, erasing, highlightSet]);
+  }, [nodes, erasing, highlightSet, remoteDrags]);
   const shownEdges = useMemo(() => {
     let base = edges;
     if (highlightSet) {
@@ -517,6 +534,7 @@ function CanvasInner() {
         onConnect={onConnect}
         onPaneClick={onPaneClick}
         onNodeClick={onNodeClick}
+        onNodeDrag={onNodeDrag}
         onNodeDragStop={onNodeDragStop}
         onEdgeDoubleClick={onEdgeDoubleClick}
         connectionMode={ConnectionMode.Loose}

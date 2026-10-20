@@ -1,0 +1,21 @@
+{
+  "name": "@erd/canvas-kinds",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "lint": "oxlint -c ../../.oxlintrc.json ."
+  },
+  "devDependencies": {
+    "@erd/config": "workspace:*",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@xyflow/react": "^12.12.0",
+    "typescript": "^7.0.2",
+    "yjs": "^13.6.33"
+  }
+}

@@ -4,10 +4,14 @@ import { Workflow } from 'lucide-react';
 import type { ProjectDetail } from '@erd/contracts';
 import { can } from '@erd/contracts';
 import { Editor } from '../editor/Editor';
+import { kinds } from '@erd/canvas-kinds';
+import '../kinds/erd';
 import { openLocalSession } from '../collab/local';
 import { openRemoteSession } from '../collab/remote';
 import { activateSession, deactivateSession } from '../collab/openCanvas';
-import { useMe, useProject } from '../api/queries';
+import { keys, useMe, useProject } from '../api/queries';
+import { useQueryClient } from '@tanstack/react-query';
+import { showToast } from '../store/useUi';
 import { ApiError } from '../api/client';
 import { useEditorContext } from '../store/useEditorContext';
 import type { Session } from '../collab/session';
@@ -54,9 +58,13 @@ function CanvasTabs({ project, canvasId }: { project: ProjectDetail; canvasId: s
           {c.name}
         </Link>
       ))}
-      <span className="flex cursor-not-allowed items-center gap-1 rounded-t-md px-3 py-1 text-[12px] text-slate-400" title="Canvas de fluxos de usuário: em breve">
-        <Workflow size={12} /> Fluxos de usuário <span className="rounded bg-slate-200 px-1 text-[9.5px]">em breve</span>
-      </span>
+      {kinds()
+        .filter((k) => !k.available)
+        .map((k) => (
+          <span key={k.kind} className="flex cursor-not-allowed items-center gap-1 rounded-t-md px-3 py-1 text-[12px] text-slate-400" title={`${k.label}: em breve`}>
+            <Workflow size={12} /> {k.label} <span className="rounded bg-slate-200 px-1 text-[9.5px]">em breve</span>
+          </span>
+        ))}
     </div>
   );
 }
@@ -66,6 +74,7 @@ export function CanvasEditor() {
   const me = useMe();
   const project = useProject(projectId);
   const nav = useNavigate();
+  const qc = useQueryClient();
   const p = project.data;
   const userId = me.data?.user?.id;
   const readOnly = p ? !can(p.role, 'edit', p.settings) : true;
@@ -78,7 +87,33 @@ export function CanvasEditor() {
     if (project.error instanceof ApiError && project.error.status === 404) void nav({ to: '/' });
   }, [project.error, nav]);
 
-  const error = useCanvasSession(p && userId ? () => openRemoteSession({ canvasId, userId, readOnly, role: p.role, color: p.color, name: me.data!.user!.name }) : null, [canvasId, userId, !!p, readOnly]);
+  const error = useCanvasSession(
+    p && userId
+      ? () =>
+          openRemoteSession({
+            canvasId,
+            userId,
+            readOnly,
+            role: p.role,
+            color: p.color,
+            name: me.data!.user!.name,
+            onStateless: (m) => {
+              if (m.type !== 'permission-changed') return;
+              if (m.role === null) {
+                showToast('Seu acesso a este projeto foi removido');
+                void nav({ to: '/' });
+                return;
+              }
+              // o papel mudou com a sessão aberta: recarrega o projeto; se mudou a permissão
+              // de edição, a sessão reconecta com um token novo, sem recarregar a página
+              showToast(m.role === 'viewer' ? 'Agora você só pode visualizar este projeto' : 'Agora você pode editar este projeto');
+              void qc.invalidateQueries({ queryKey: keys.project(projectId) });
+            },
+            onAccessLost: () => void qc.invalidateQueries({ queryKey: keys.project(projectId) }),
+          })
+      : null,
+    [canvasId, userId, !!p, readOnly],
+  );
 
   if (project.error && !(project.error instanceof ApiError && project.error.status === 404)) return <Editor error={(project.error as Error).message} />;
   return <Editor error={error} tabs={p ? <CanvasTabs project={p} canvasId={canvasId} /> : null} />;

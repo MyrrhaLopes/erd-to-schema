@@ -17,7 +17,12 @@
     "@erd/crdt": "workspace:*",
     "@erd/db": "workspace:*",
     "@erd/model": "workspace:*",
+    "@erd/sandbox": "workspace:*",
     "@erd/sync": "workspace:*",
+    "@hocuspocus/server": "^4.7.1",
+    "crossws": "^0.4.15",
+    "jose": "^6.2.12",
+    "libpg-query": "^18.1.5",
     "yjs": "^13.6.33"
   },
   "devDependencies": {

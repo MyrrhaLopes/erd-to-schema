@@ -14,6 +14,8 @@ declare global {
       panel: (f: Format) => PanelView;
       tableNames: () => string[];
       wasmUrl: string;
+      awareness: () => ({ id: number; local: boolean } & Record<string, unknown>)[];
+      syncState: (f: Format) => { status: string; textHash: string; localHash: string; divergent: number } | null;
       parse: (f: Format, text: string) => Promise<{ ok: boolean; diagnostics?: { message: string }[] }>;
     };
   }

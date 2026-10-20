@@ -2,7 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Canvas, ReactFlowProvider } from '../canvas/Canvas';
 import { Header } from '../ui/Header';
-import { CodePanel } from '../ui/CodePanel';
+import { erdKind } from '../kinds/erd';
 import { ChangeToast, ExportDialog, HelpDialog } from '../ui/Dialogs';
 import { useUi } from '../store/useUi';
 import { useProjectStore } from '../store/useProjectStore';
@@ -40,6 +40,8 @@ function Splitter() {
 }
 
 /** O editor de um canvas (o app original), igual nos modos local e nuvem */
+const { SidePanels } = erdKind;
+
 export function Editor({ error, banner, tabs }: { error?: string; banner?: ReactNode; tabs?: ReactNode }) {
   const loaded = useProjectStore((s) => s.loaded);
   const panelOpen = useUi((s) => s.panelOpen);
@@ -66,7 +68,7 @@ export function Editor({ error, banner, tabs }: { error?: string; banner?: React
             <>
               <Splitter />
               <aside className="shrink-0" style={{ width: panelWidth }}>
-                <CodePanel />
+                {SidePanels && <SidePanels />}
               </aside>
             </>
           )}

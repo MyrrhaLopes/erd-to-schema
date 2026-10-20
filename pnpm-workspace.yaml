@@ -3,4 +3,6 @@ packages:
   - "packages/*"
   - "e2e"
 onlyBuiltDependencies:
+  - isolated-vm
+  - "@node-rs/argon2"
   - esbuild

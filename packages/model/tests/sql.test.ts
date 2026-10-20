@@ -72,7 +72,11 @@ describe('SQL', () => {
     const { parse } = await import('libpg-query');
     const r = await parseSql('CREATE TABLE x (a int,,);', parse as never);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.diagnostics[0].from).toBe(21);
+    if (!r.ok) expect(r.diagnostics[0].from).toBe(22); // o segundo ","
+    // com acentos antes do erro a posição continua certa (o libpg-query conta caracteres aqui)
+    const t = "-- indicação, aplicação\nCREATE TABLE x (a int,,);";
+    const r2 = await parseSql(t, parse as never);
+    if (!r2.ok) expect(t[r2.diagnostics[0].from]).toBe(',');
   });
 
   it('keeps a column comment added without changing the column definition', async () => {

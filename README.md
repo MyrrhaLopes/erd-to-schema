@@ -90,6 +90,14 @@ Os atalhos ficam desativados quando o foco está num input ou num editor (no Win
 ## Arquitetura
 
 ```
+apps/web/                    o app (Vite + React): rotas, auth, dashboard, editor; modo local em /local
+apps/api/                    Hono + Better Auth + e-mail; hospeda o servidor de colaboração (mesmo processo)
+apps/collab/                 Hocuspocus (WebSocket Yjs em /collab), persistência (log + compactação), sync bot
+packages/crdt/               o modelo como CRDT: forma do Y.Doc, applyDiff, projeção incremental, validação zod
+packages/sync/               o sync bot: texto ⇄ modelo (parse por bloco, patch, blocos divergentes)
+packages/sandbox/            Drizzle do usuário num isolate V8 (isolated-vm) dentro de worker_threads
+packages/db/                 schema Drizzle do backend + migrações; packages/contracts: zod + can()
+packages/emails/             templates React Email; packages/canvas-kinds: contrato de tipo de canvas
 packages/model/src/          tipos canônicos + capability matrix, reconcile(), tags, layout, .zip do projeto
 packages/model/src/formats/  sql | prisma | drizzle: generate.ts (modelo → texto) e parse.ts (texto → modelo)
 apps/web/src/sync/         motor de sync (status por painel, seq, debounce, conflitos) + cliente dos workers
