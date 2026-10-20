@@ -2,7 +2,7 @@
 
 Canvas interativo de ERD em que **canvas, SQL (Postgres), Prisma e Drizzle são quatro vistas do mesmo modelo**. Editar qualquer uma atualiza as outras três, e o canvas se redesenha sozinho. Implementado a partir de [`docs/erd-builder-plan.md`](docs/erd-builder-plan.md).
 
-Monorepo pnpm + Turborepo, com contas, projetos na nuvem e o modo local sem conta. O plano de evolução está em [`docs/fullstack-collab-plan.md`](docs/fullstack-collab-plan.md).
+Monorepo pnpm + Turborepo, com contas, projetos na nuvem e o modo local sem conta. O plano de evolução está em [`docs/fullstack-collab-plan.md`](docs/fullstack-collab-plan.md). O dicionário de dados em Word publicado no Google Drive está planejado em [`docs/drive-docx-plan.md`](docs/drive-docx-plan.md).
 
 ## Rodando local (com backend)
 
