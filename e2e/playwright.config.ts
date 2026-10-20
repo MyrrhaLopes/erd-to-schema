@@ -50,6 +50,7 @@ export default defineConfig({
             MAIL_DRIVER: 'smtp',
             SMTP_URL: process.env.SMTP_URL ?? 'smtp://localhost:1025',
             LOG_LEVEL: process.env.E2E_LOG_LEVEL ?? 'warn',
+            DRIVE_PROVIDER: 'fake',
           },
         },
         {

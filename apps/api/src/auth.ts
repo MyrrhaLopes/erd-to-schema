@@ -42,9 +42,15 @@ export function createAuth(deps: { db: Db; env: Env; mailer: Mailer; log: Logger
     },
     socialProviders: {
       ...(env.GITHUB_CLIENT_ID ? { github: { clientId: env.GITHUB_CLIENT_ID, clientSecret: env.GITHUB_CLIENT_SECRET! } } : {}),
-      ...(env.GOOGLE_CLIENT_ID ? { google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET! } } : {}),
+      // offline + consent: o Google entrega o refresh token, que o Drive usa sem a pessoa por perto
+      ...(env.GOOGLE_CLIENT_ID ? { google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET!, accessType: 'offline', prompt: 'consent' } } : {}),
     },
-    account: { accountLinking: { enabled: true, trustedProviders: ['github', 'google'] } },
+    account: {
+      // tokens OAuth cifrados em `accounts` (os antigos em texto puro continuam legíveis; `pnpm auth:encrypt-tokens` cifra)
+      encryptOAuthTokens: true,
+      // a conta Google do Drive pode ter outro e-mail que o da conta no app
+      accountLinking: { enabled: true, trustedProviders: ['github', 'google'], allowDifferentEmails: true },
+    },
     // limite de tentativas embutido, ligado também fora de produção nas rotas sensíveis
     rateLimit: {
       enabled: env.NODE_ENV !== 'test',

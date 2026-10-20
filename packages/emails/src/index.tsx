@@ -141,6 +141,36 @@ export const emails = {
         <Action href={p.url} label="Abrir o projeto" />
       </Layout>,
     ),
+
+  /** Avisos do documento no Drive (edição externa, falha, reconectar) — só para o dono */
+  driveAlert: (p: { project: string; title: string; message: string; url: string; prefsUrl?: string }) =>
+    build(
+      'Aviso sobre o documento no Google Drive',
+      <Layout preview={truncate(p.title, 80)} title={truncate(p.title, 120)} footer={unsubscribe(p.prefsUrl)}>
+        <P>
+          Projeto <b>{truncate(p.project, 120)}</b>: {truncate(p.message, 600)}
+        </P>
+        <P>Edições e reversões do documento são feitas só pelo app. A próxima publicação sobrescreve o arquivo no Drive.</P>
+        <Action href={p.url} label="Abrir o projeto" />
+      </Layout>,
+    ),
+
+  projectTransferred: (p: { project: string; by: string; url: string; driveNote?: boolean; prefsUrl?: string }) =>
+    build(
+      'Um projeto foi transferido para você',
+      <Layout preview={`${truncate(p.by, 60)} transferiu um projeto para você`} title="Agora você é o dono do projeto" footer={unsubscribe(p.prefsUrl)}>
+        <P>
+          {truncate(p.by, 80)} transferiu o projeto <b>{truncate(p.project, 120)}</b> para você. Agora você é o dono.
+        </P>
+        {p.driveNote ? (
+          <P>
+            O documento Word deste projeto está no Google Drive de {truncate(p.by, 80)}. Conecte o seu Google Drive e escolha uma pasta em Configurações do projeto → Documento: o documento será
+            criado lá, e o arquivo antigo será excluído definitivamente.
+          </P>
+        ) : null}
+        <Action href={p.url} label="Abrir o projeto" />
+      </Layout>,
+    ),
 };
 
 export type EmailKind = keyof typeof emails;

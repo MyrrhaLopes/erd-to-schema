@@ -18,12 +18,14 @@ export const ROOTS = {
   layout: 'layout',
   entityMeta: 'entityMeta',
   notes: 'notes',
+  /** Formulário do documento Word (drive-docx-plan §1.4), achatado: uma chave por campo */
+  docContent: 'doc',
   sync: 'sync',
   clients: 'clients',
 } as const;
 
 /** Tipos que formam o modelo (projeção, undo, persistência do snapshot) */
-export const MODEL_ROOTS = ['meta', 'tables', 'enums', 'relationships', 'layout', 'entityMeta', 'notes'] as const;
+export const MODEL_ROOTS = ['meta', 'tables', 'enums', 'relationships', 'layout', 'entityMeta', 'notes', 'docContent'] as const;
 export type ModelRoot = (typeof MODEL_ROOTS)[number];
 
 /** Projeto como aparece no documento compartilhado: sem `view`, que é preferência de cada pessoa */
@@ -42,6 +44,7 @@ export function roots(doc: Y.Doc) {
     layout: doc.getMap<YEntity>(ROOTS.layout),
     entityMeta: doc.getMap<YEntity>(ROOTS.entityMeta),
     notes: doc.getMap<YEntity>(ROOTS.notes),
+    docContent: doc.getMap<unknown>(ROOTS.docContent),
     sync: doc.getMap<unknown>(ROOTS.sync),
     clients: doc.getMap<string>(ROOTS.clients),
   };

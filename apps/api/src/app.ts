@@ -9,6 +9,7 @@ import { rateLimit } from './rateLimit';
 import { meRoutes } from './routes/me';
 import { projectsRoutes } from './routes/projects';
 import { canvasesRoutes } from './routes/canvases';
+import { canvasDriveRoutes, driveConfigRoutes, projectDriveRoutes } from './routes/drive';
 import { accessRequestRoutes, invitationRoutes, notificationRoutes, projectSharingRoutes } from './routes/sharing';
 
 /** As rotas da API (o tipo delas é o contrato do cliente tipado `hc<ApiType>` na web) */
@@ -24,6 +25,9 @@ export function buildApi(deps: Deps) {
     .route('/projects', projectsRoutes(deps))
     .route('/projects', projectSharingRoutes(deps))
     .route('/canvases', canvasesRoutes(deps))
+    .route('/drive', driveConfigRoutes(deps))
+    .route('/projects', projectDriveRoutes(deps))
+    .route('/canvases', canvasDriveRoutes(deps))
     .route('/access-requests', accessRequestRoutes(deps))
     .route('/invitations', invitationRoutes(deps))
     .route('/notifications', notificationRoutes(deps));

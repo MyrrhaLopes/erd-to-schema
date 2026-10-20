@@ -1,0 +1,28 @@
+{
+  "name": "@erd/docx",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "vitest run",
+    "lint": "oxlint -c ../../.oxlintrc.json ."
+  },
+  "dependencies": {
+    "@erd/model": "workspace:*",
+    "docx": "9.13.0",
+    "fflate": "^0.8.3"
+  },
+  "devDependencies": {
+    "@erd/config": "workspace:*",
+    "@types/node": "^26.6.5",
+    "fast-check": "^4.10.2",
+    "libpg-query": "^18.1.5",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.4"
+  }
+}

@@ -20,6 +20,11 @@ export const EnvZ = z
     GITHUB_CLIENT_SECRET: opt,
     GOOGLE_CLIENT_ID: opt,
     GOOGLE_CLIENT_SECRET: opt,
+    /** Documento Word no Drive (drive-docx-plan §2.1): chave do Picker (restrita por referrer ao APP_URL) e número do projeto no Google Cloud */
+    GOOGLE_PICKER_API_KEY: opt,
+    GOOGLE_PROJECT_NUMBER: opt,
+    /** `fake`: Drive em memória (E2E e dev sem Google); recusado com APP_URL em HTTPS */
+    DRIVE_PROVIDER: z.enum(['google', 'fake']).optional(),
     /** Fase 7: com Redis, o Hocuspocus e os eventos de permissão escalam para várias réplicas */
     REDIS_URL: z.url().optional(),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
@@ -43,10 +48,22 @@ export const EnvZ = z
     if (e.MAIL_DRIVER === 'resend' && !e.RESEND_API_KEY) ctx.addIssue({ code: 'custom', path: ['RESEND_API_KEY'], message: 'obrigatório com MAIL_DRIVER=resend' });
     if (e.MAIL_DRIVER === 'smtp' && !e.SMTP_URL) ctx.addIssue({ code: 'custom', path: ['SMTP_URL'], message: 'obrigatório com MAIL_DRIVER=smtp' });
     if (!!e.GITHUB_CLIENT_ID !== !!e.GITHUB_CLIENT_SECRET) ctx.addIssue({ code: 'custom', path: ['GITHUB_CLIENT_SECRET'], message: 'defina id e secret juntos' });
+    // o Drive falso só roda fora de HTTPS (testes, dev e as imagens de produção locais do E2E)
+    if (e.NODE_ENV === 'production' && e.DRIVE_PROVIDER === 'fake' && e.APP_URL.startsWith('https://'))
+      ctx.addIssue({ code: 'custom', path: ['DRIVE_PROVIDER'], message: 'o Drive falso não pode rodar num domínio público (HTTPS)' });
+    if (e.DRIVE_PROVIDER === 'google' && !(e.GOOGLE_CLIENT_ID && e.GOOGLE_PICKER_API_KEY && e.GOOGLE_PROJECT_NUMBER))
+      ctx.addIssue({ code: 'custom', path: ['DRIVE_PROVIDER'], message: 'o Drive precisa de GOOGLE_CLIENT_ID, GOOGLE_PICKER_API_KEY e GOOGLE_PROJECT_NUMBER' });
     if (!!e.GOOGLE_CLIENT_ID !== !!e.GOOGLE_CLIENT_SECRET) ctx.addIssue({ code: 'custom', path: ['GOOGLE_CLIENT_SECRET'], message: 'defina id e secret juntos' });
   });
 
 export type Env = z.infer<typeof EnvZ>;
+
+/** Qual Drive usar: o falso, o do Google (com as três variáveis) ou nenhum (a funcionalidade some) */
+export function driveProviderKind(e: Env): 'google' | 'fake' | null {
+  if (e.DRIVE_PROVIDER === 'fake') return 'fake';
+  if (e.GOOGLE_CLIENT_ID && e.GOOGLE_PICKER_API_KEY && e.GOOGLE_PROJECT_NUMBER) return 'google';
+  return null;
+}
 
 /** Valida as variáveis no boot: com variável faltando, o processo cai com uma mensagem clara e o healthcheck nunca passa */
 export function loadEnv(source: Record<string, string | undefined> = process.env): Env {

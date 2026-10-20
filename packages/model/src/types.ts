@@ -159,6 +159,29 @@ export interface ViewState {
   cardinalityStyle?: 'look-across' | 'below-label';
 }
 
+/**
+ * Formulário do dicionário de dados em Word (docs/drive-docx-plan.md §1.4): só o que o
+ * modelo não tem. O documento é sempre gerado; isto não é um editor do documento.
+ * Descrições de tabela e coluna não ficam aqui: gravam em `Table.comment`/`Column.comment`.
+ */
+export interface DocContent {
+  cover: { title: string; subtitle: string; edition: string; scope: string };
+  /** Parágrafo de introdução da seção 1 (convenções) */
+  intro: string;
+  conventions: {
+    /** Objetivo das convenções detectadas, pela chave da detecção */
+    detected: Record<string, { goal: string }>;
+    extra: { name: string; pattern: string; goal: string }[];
+  };
+  /** Regras de negócio por tabela (marcadores "• ") */
+  tables: Record<Id, { rules: string[] }>;
+  /** "Função" de cada relação vista de cada lado */
+  relationships: Record<Id, { fromSide?: string; toSide?: string }>;
+  typeStyle: 'prisma' | 'sql';
+  /** Nome do arquivo; vazio = "Modelo_Dados_{projeto}.docx" */
+  fileName: string;
+}
+
 export interface Project {
   version: 1;
   name: string;
@@ -167,6 +190,8 @@ export interface Project {
   meta: Record<Id, EntityMeta>;
   notes: NoteBlock[];
   view: ViewState;
+  /** Formulário do documento Word; ausente = vazio */
+  doc?: DocContent;
 }
 
 export type Origin = Format | 'canvas' | 'history' | 'load' | 'inspector' | 'remote';

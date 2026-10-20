@@ -47,6 +47,8 @@ services:
       AUTH_SIGNUPS_PER_MINUTE: ${AUTH_SIGNUPS_PER_MINUTE:-5}
       # vazio = uma réplica só, sem Redis
       REDIS_URL: ${REDIS_URL:-}
+      # o E2E usa o Drive em memória (DRIVE_PROVIDER=fake); vazio = sem Drive
+      DRIVE_PROVIDER: ${DRIVE_PROVIDER:-}
     depends_on:
       postgres: { condition: service_healthy }
       createdb: { condition: service_completed_successfully }

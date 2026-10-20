@@ -33,7 +33,8 @@
 		X-Content-Type-Options nosniff
 		Referrer-Policy strict-origin-when-cross-origin
 		# 'wasm-unsafe-eval' é necessário para o libpg-query (WASM) no parser worker
-		?Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self' wss: ws: data: blob:; img-src 'self' data: blob: https://avatars.githubusercontent.com https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self' data:; frame-ancestors 'none'"
+		# apis.google.com / docs.google.com: o Google Picker, para o dono escolher a pasta do documento no Drive
+		?Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://apis.google.com https://www.gstatic.com; worker-src 'self' blob:; connect-src 'self' wss: ws: data: blob: https://www.googleapis.com; frame-src https://docs.google.com https://drive.google.com https://accounts.google.com https://content.googleapis.com; img-src 'self' data: blob: https://avatars.githubusercontent.com https://lh3.googleusercontent.com https://*.googleusercontent.com https://ssl.gstatic.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://www.gstatic.com https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; frame-ancestors 'none'"
 		-Server
 	}
 }

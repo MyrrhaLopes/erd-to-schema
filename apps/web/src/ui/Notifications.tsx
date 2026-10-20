@@ -27,6 +27,13 @@ function describe(n: Notification): { text: string; to: string } {
       return { text: `${str(p.by)} mudou seu papel em ${project} para ${(ROLE_LABEL[p.role as 'editor'] ?? '').toLowerCase()}`, to: `/p/${pid}` };
     case 'member-removed':
       return { text: `${str(p.by)} removeu você de ${project}`, to: '/' };
+    case 'project-transferred':
+      return {
+        text: `${str(p.by)} transferiu ${project} para você${p.driveNote ? ': conecte o seu Google Drive para trazer o documento' : ''}`,
+        to: p.driveNote ? `/p/${pid}/settings` : `/p/${pid}`,
+      };
+    case 'drive-alert':
+      return { text: `${project}: ${str(p.title)}. ${str(p.message)}`, to: `/p/${pid}/settings` };
     default:
       return { text: n.type, to: '/' };
   }

@@ -29,7 +29,9 @@ export type Action =
   | 'transfer'
   | 'requestAccess'
   | 'manageCanvases'
-  | 'changeSettings';
+  | 'changeSettings'
+  | 'driveConfigure'
+  | 'drivePublish';
 
 /**
  * A regra de autorização num lugar só (§3), usada pela API, pelo servidor de colaboração
@@ -43,6 +45,8 @@ export type Action =
  * | renomear projeto, criar canvases             |   ✔   |  ✔                   |   ✘    |
  * | excluir, transferir, configurações           |   ✔   |  ✘                   |   ✘    |
  * | pedir acesso de edição                       |   —   |  —                   |   ✔    |
+ * | Drive: conectar, escolher/trocar pasta       |   ✔   |  ✘                   |   ✘    |
+ * | Drive: revisar e publicar, reverter          |   ✔   |  ✔                   |   ✘    |
  */
 export function can(role: Role | null | undefined, action: Action, settings?: Partial<ProjectSettings>): boolean {
   if (!role) return false;
@@ -53,6 +57,7 @@ export function can(role: Role | null | undefined, action: Action, settings?: Pa
     case 'edit':
     case 'rename':
     case 'manageCanvases':
+    case 'drivePublish':
       return role === 'owner' || role === 'editor';
     case 'share':
     case 'manageMembers':
@@ -61,6 +66,7 @@ export function can(role: Role | null | undefined, action: Action, settings?: Pa
     case 'delete':
     case 'transfer':
     case 'changeSettings':
+    case 'driveConfigure':
       return role === 'owner';
     case 'requestAccess':
       return role === 'viewer';

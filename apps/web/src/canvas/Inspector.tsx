@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Code2, Download, Plus, Table2, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Code2, Download, FileText, Plus, Table2, Trash2, X } from 'lucide-react';
 import type { Cardinality, Id, RefAction, Table } from '@erd/model/types';
 import { REF_ACTIONS } from '@erd/model/types';
 import { formatType, parseTypeString } from '@erd/model/columnType';
 import { newId } from '@erd/model/naming';
 import { columnById, relCardinality, tableById } from '@erd/model/schema';
-import { autoTags, effectiveTags } from '@erd/model/tags';
+import { allTags, autoTags, effectiveTags } from '@erd/model/tags';
+import { isModuleTag } from '@erd/docx/modules';
+import { openDocForm } from '../document/useDocUi';
 import { useProjectStore } from '../store/useProjectStore';
 import { useUi, revealTableInCode } from '../store/useUi';
 import {
@@ -23,7 +25,7 @@ import { downloadNote } from '../persistence/notes';
 import { NOTE_COLORS } from './nodes/NoteNode';
 
 /** Input que só comita no blur/Enter (uma entrada de undo por edição, não por tecla) */
-function CommitInput({
+export function CommitInput({
   value,
   onCommit,
   placeholder,
@@ -141,12 +143,27 @@ function TagEditor({ id }: { id: Id }) {
         className="mt-1.5 flex gap-1"
         onSubmit={(e) => {
           e.preventDefault();
-          const t = draft.trim().toLowerCase().replace(/\s+/g, '-');
+          // tags de módulo ("Módulo A — Cadastro") ficam como foram escritas: viram título no documento Word
+          const raw = draft.trim().replace(/\s+/g, ' ');
+          const t = isModuleTag(raw) ? raw : raw.toLowerCase().replace(/\s+/g, '-');
           if (t) setTags(id, [...new Set([...manual, t])], suppressed.filter((x) => x !== t));
           setDraft('');
         }}
       >
-        <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="nova tag (ex.: core, audit)" className="w-full rounded border border-slate-200 px-1.5 py-1 text-[12px] outline-none focus:border-indigo-400" />
+        <input
+          value={draft}
+          list="erd-module-tags"
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="nova tag (ex.: core, Módulo A — Cadastro)"
+          className="w-full rounded border border-slate-200 px-1.5 py-1 text-[12px] outline-none focus:border-indigo-400"
+        />
+        <datalist id="erd-module-tags">
+          {allTags(project)
+            .filter(isModuleTag)
+            .map((t) => (
+              <option key={t} value={t} />
+            ))}
+        </datalist>
         <button className="rounded bg-slate-100 px-2 text-[11px] text-slate-600 hover:bg-slate-200">+</button>
       </form>
     </div>
@@ -267,6 +284,16 @@ function TableInspector({ table }: { table: Table }) {
         >
           <Code2 size={13} /> Ver em código
         </button>
+        {(!table.comment?.trim() || table.columns.some((c) => !c.comment?.trim())) && (
+          <button
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 py-1.5 text-[11.5px] font-medium text-amber-800 hover:bg-amber-100"
+            onClick={() => openDocForm(table.id)}
+            title="Descrições que faltam no documento Word"
+            data-testid="fill-in-document"
+          >
+            <FileText size={13} /> Preencher no documento
+          </button>
+        )}
       </div>
       <Section title="Tags">
         <TagEditor id={table.id} />

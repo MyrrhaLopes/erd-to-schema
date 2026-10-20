@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { produce, type Draft } from 'immer';
 import * as Y from 'yjs';
-import type { EntityMeta, Format, Id, LayoutEntry, NoteBlock, Origin, Project, SchemaModel, Tool, ViewState } from '@erd/model/types';
+import type { DocContent, EntityMeta, Format, Id, LayoutEntry, NoteBlock, Origin, Project, SchemaModel, Tool, ViewState } from '@erd/model/types';
 import { FORMATS } from '@erd/model/types';
 import { defaultView, emptyProject, placeNewEntities } from '@erd/model/project';
 import { sanitizeSchema } from '@erd/model/schema';
@@ -15,6 +15,8 @@ export interface Doc {
   layout: Record<Id, LayoutEntry>;
   meta: Record<Id, EntityMeta>;
   notes: NoteBlock[];
+  /** Formulário do documento Word (raiz `doc`); ausente = vazio */
+  doc?: DocContent;
 }
 
 export interface ChangeReport {
@@ -121,7 +123,7 @@ export const useProjectStore = create<State>()((set, get) => ({
 export function replaceDocument(session: Session, p: Project) {
   const doc = session.doc;
   const before = new Projector(doc).current;
-  const after: ProjectDoc = { name: p.name, schema: p.schema, layout: { ...p.layout }, meta: p.meta, notes: p.notes };
+  const after: ProjectDoc = { name: p.name, schema: p.schema, layout: { ...p.layout }, meta: p.meta, notes: p.notes, ...(p.doc ? { doc: p.doc } : {}) };
   placeNewEntities(after);
   doc.transact(() => {
     applyDiff(doc, before, after);
@@ -208,7 +210,7 @@ const ORIGIN_SEEN = new Map<Format, string>();
  */
 export function bindStore(session: Session): () => void {
   const projector = new Projector(session.doc);
-  const toDoc = (p: ProjectDoc): Doc => ({ schema: p.schema, layout: p.layout, meta: p.meta, notes: p.notes });
+  const toDoc = (p: ProjectDoc): Doc => ({ schema: p.schema, layout: p.layout, meta: p.meta, notes: p.notes, ...(p.doc ? { doc: p.doc } : {}) });
   const first = projector.current;
   ORIGIN_SEEN.clear();
   for (const f of FORMATS) {
@@ -246,7 +248,7 @@ export function bindStore(session: Session): () => void {
       const s = useProjectStore.getState();
       if (p.name !== s.name) patch.name = p.name;
       const d = toDoc(p);
-      if (d.schema !== s.doc.schema || d.layout !== s.doc.layout || d.meta !== s.doc.meta || d.notes !== s.doc.notes) {
+      if (d.schema !== s.doc.schema || d.layout !== s.doc.layout || d.meta !== s.doc.meta || d.notes !== s.doc.notes || d.doc !== s.doc.doc) {
         patch.doc = d;
         patch.rev = s.rev + 1;
         patch.lastOrigin = origin;

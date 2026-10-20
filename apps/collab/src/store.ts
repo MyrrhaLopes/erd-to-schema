@@ -128,9 +128,9 @@ export class CanvasStore {
   }
 
   /** Uma versão nomeada (§6.3): o estado inteiro do documento naquele momento */
-  async createVersion(canvasId: string, label: string, state: Uint8Array, createdBy: string | null) {
+  async createVersion(canvasId: string, label: string, state: Uint8Array, createdBy: string | null, isProtected = false) {
     const id = `v_${nanoid(12)}`;
-    await this.db.insert(canvasVersions).values({ id, canvasId, label, state, createdBy });
+    await this.db.insert(canvasVersions).values({ id, canvasId, label, state, createdBy, protected: isProtected });
     return id;
   }
 

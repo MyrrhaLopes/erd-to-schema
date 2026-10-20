@@ -90,10 +90,28 @@ export function directiveLines(project: Project, format: Format): string[] {
   for (const t of schema.tables) {
     const m = meta[t.id];
     const name = (t.schema ? t.schema + '.' : '') + t.name;
-    if (m?.tags?.length) lines.push(`${p} @erd:tags ${name} ${m.tags.join(', ')}`);
-    if (m?.suppressedTags?.length) lines.push(`${p} @erd:untag ${name} ${m.suppressedTags.join(', ')}`);
+    if (m?.tags?.length) lines.push(`${p} @erd:tags ${name} ${m.tags.map(quoteTag).join(', ')}`);
+    if (m?.suppressedTags?.length) lines.push(`${p} @erd:untag ${name} ${m.suppressedTags.map(quoteTag).join(', ')}`);
   }
   return lines;
+}
+
+/** Tag com espaço, vírgula ou aspas vai entre aspas ("Módulo A — Cadastro e Pessoas") */
+export const quoteTag = (t: string) => (/[\s,"]/.test(t) ? JSON.stringify(t) : t);
+
+/** Lista de tags de uma diretiva: separadas por vírgula ou espaço; entre aspas, podem ter espaços */
+export function splitTags(s: string): string[] {
+  const out: string[] = [];
+  for (const m of s.matchAll(/"((?:[^"\\]|\\.)*)"|([^,\s"]+)/g)) {
+    if (m[1] !== undefined) {
+      try {
+        out.push(JSON.parse(`"${m[1]}"`));
+      } catch {
+        out.push(m[1]);
+      }
+    } else out.push(m[2]);
+  }
+  return out.map((t) => t.trim()).filter(Boolean);
 }
 
 function findTable(schema: SchemaModel, ref: string): Table | undefined {
@@ -177,10 +195,7 @@ export function applyDirectives(parsed: ParsedSchema, directives: RawDirective[]
         warn(`@erd:${d.kind}: tabela não encontrada (${m[1]})`);
         continue;
       }
-      const tags = m[2]
-        .split(/[,\s]+/)
-        .map((s) => s.trim())
-        .filter(Boolean);
+      const tags = splitTags(m[2]);
       const entry = (meta[t.id] ??= {});
       if (d.kind === 'tags') entry.tags = [...new Set([...(entry.tags ?? []), ...tags])];
       else entry.suppressedTags = [...new Set([...(entry.suppressedTags ?? []), ...tags])];

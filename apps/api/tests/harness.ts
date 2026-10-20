@@ -6,10 +6,11 @@ import { loadEnv } from '../src/env';
 import { MemoryMailer } from '../src/mailer';
 import { createLogger } from '../src/log';
 import type { Deps } from '../src/context';
+import type { DriveProvider } from '../src/drive/provider';
 
 export const APP_URL = 'http://app.test';
 
-export async function harness({ envOverrides, ...overrides }: Partial<Deps> & { realtime?: boolean; envOverrides?: Record<string, string> } = {}) {
+export async function harness({ envOverrides, ...overrides }: Partial<Deps> & { realtime?: boolean; envOverrides?: Record<string, string>; driveProvider?: DriveProvider } = {}) {
   const t = await createTestDatabase();
   const env = loadEnv({
     NODE_ENV: 'test',

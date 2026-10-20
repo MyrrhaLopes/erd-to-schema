@@ -26,6 +26,8 @@ describe('templates de e-mail', () => {
       emails.accessDecision({ project: 'Loja', approved: true, url: 'u' }),
       emails.accessDecision({ project: 'Loja', approved: false, url: 'u', prefsUrl: 'p' }),
       emails.memberChanged({ project: 'Loja', role: 'viewer', by: 'Ana', added: true, url: 'u' }),
+      emails.driveAlert({ project: 'Loja', title: 'Edição externa', message: 'Bia editou pelo Drive', url: 'u', prefsUrl: 'p' }),
+      emails.projectTransferred({ project: 'Loja', by: 'Ana', url: 'u', driveNote: true }),
     ]);
     for (const e of all) expect(e.html).toContain('ERD Builder');
   });

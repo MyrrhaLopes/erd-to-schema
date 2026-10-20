@@ -87,6 +87,17 @@ export const EntityMetaZ = z.object({
 
 export const NoteZ = z.object({ id, title: z.string().max(1000), content: z.string().max(1_000_000), color: opt(z.string().max(50)) });
 
+/** Um campo da raiz `doc` (formulário do documento Word, achatado em `flattenDocContent`) */
+const text = z.string().max(20_000);
+export const DocFieldZ = z.union([
+  z.object({ key: z.enum(['cover.title', 'cover.subtitle', 'cover.edition', 'cover.scope', 'intro', 'fileName']), value: text }),
+  z.object({ key: z.literal('typeStyle'), value: z.enum(['prisma', 'sql']) }),
+  z.object({ key: z.literal('extra'), value: z.array(z.object({ name: text, pattern: text, goal: text })).max(200) }),
+  z.object({ key: z.string().regex(/^conv:.{1,200}$/), value: text }),
+  z.object({ key: z.string().regex(/^rules:.{1,200}$/), value: z.array(text).max(200) }),
+  z.object({ key: z.string().regex(/^rel:.{1,200}$/), value: z.object({ fromSide: opt(text), toSide: opt(text) }) }),
+]);
+
 /**
  * Valida e devolve a própria entidade (não a cópia do zod, para não mudar a ordem das
  * chaves de que comparações por JSON dependem), ou `undefined` (com aviso) quando inválida.

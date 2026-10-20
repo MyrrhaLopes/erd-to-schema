@@ -12,6 +12,7 @@ import { buildSampleProject } from '@erd/model/sample';
 import { parseSql } from '@erd/model/formats/sql/parse';
 import { projectAccess, requireCan, requireUser, type AppEnv, type Deps } from '../context';
 import { renderThumbnail } from '../thumbnail';
+import { emailIfAllowed, notify } from '../notify';
 
 export const newId = (prefix: string) => `${prefix}_${nanoid(12)}`;
 
@@ -209,7 +210,17 @@ export function projectsRoutes(deps: Deps) {
       });
       await deps.events.permissionChanged({ projectId: a.project.id, userId, role: 'owner' });
       await deps.events.permissionChanged({ projectId: a.project.id, userId: user.id, role: 'editor' });
-      return c.json({ ok: true });
+      // o documento segue no Drive do dono antigo até o novo escolher uma pasta (drive-docx-plan §6)
+      const driveNote = deps.drive ? await deps.drive.ownerTransferred(a.project.id, user.id, userId, user.id) : false;
+      await notify(deps, [userId], 'project-transferred', { projectId: a.project.id, projectName: a.project.name, by: user.name, driveNote });
+      const [to] = await db.select({ email: users.email }).from(users).where(eq(users.id, userId));
+      if (to)
+        await emailIfAllowed(deps, userId, 'membership', {
+          kind: 'projectTransferred',
+          to: to.email,
+          props: { project: a.project.name, by: user.name, driveNote, url: `${deps.env.APP_URL}/p/${a.project.id}`, prefsUrl: `${deps.env.APP_URL}/settings` },
+        });
+      return c.json({ ok: true, driveNote });
     })
 
     .post('/:id/canvases', zValidator('json', CreateCanvasZ), async (c) => {

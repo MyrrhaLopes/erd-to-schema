@@ -22,6 +22,8 @@ deps.collab?.attach(server as unknown as import('node:http').Server);
 const unlisten = await wirePermissionEvents(deps);
 // a fila de e-mails roda no mesmo processo (um worker pg-boss)
 await deps.mail.start();
+// jobs do Drive (publicar, trocar pasta, limpeza, auditoria) na mesma instância pg-boss
+await deps.drive?.jobs.start();
 
 installShutdown(
   deps.log,
@@ -34,6 +36,7 @@ installShutdown(
     { name: 'redis', run: async () => deps.redis?.quit() },
     // termina os e-mails em envio; os pendentes ficam no banco para o próximo container
     { name: 'mail', run: () => deps.mail.stop() },
+    { name: 'drive', run: async () => deps.drive?.jobs.stop() },
     // 3. fecha o pool do Postgres
     { name: 'postgres', run: () => deps.pool.end() },
   ],

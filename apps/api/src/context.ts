@@ -8,6 +8,7 @@ import type { Env } from './env';
 import type { Logger } from './log';
 import type { Mailer } from './mailer';
 import type { MailQueue } from './mailQueue';
+import type { DriveService } from './drive/service';
 
 /** Eventos para fora da requisição (mudança de papel → servidor de colaboração; e-mails → fila) */
 export interface Events {
@@ -41,6 +42,8 @@ export interface Deps {
   collab?: Collab;
   /** Fase 7: conexão com o Redis (várias réplicas) */
   redis?: { quit(): Promise<unknown> };
+  /** Documento Word no Google Drive (ausente quando não configurado) */
+  drive?: DriveService;
 }
 
 export type AppEnv = { Variables: { user: SessionUser | null } };
