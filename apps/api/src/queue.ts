@@ -65,7 +65,13 @@ export class BossJobQueue<T extends object> implements JobQueue<T> {
     if (this.started) return;
     await this.shared.start();
     const boss = this.shared.boss;
-    await boss.createQueue(this.name, { policy: 'singleton', retryLimit: this.opts.retryLimit, retryDelay: this.opts.retryDelaySeconds, retryBackoff: true, deleteAfterSeconds: 7 * 86400 });
+    await boss.createQueue(this.name, {
+      policy: 'singleton',
+      retryLimit: this.opts.retryLimit,
+      retryDelay: this.opts.retryDelaySeconds,
+      retryBackoff: true,
+      deleteAfterSeconds: 7 * 86400,
+    });
     await boss.work<T>(this.name, { pollingIntervalSeconds: 2 }, async (jobs) => {
       for (const job of jobs) {
         const j = job as unknown as { data: T; retryCount?: number };

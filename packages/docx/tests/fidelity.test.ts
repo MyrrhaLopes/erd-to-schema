@@ -119,35 +119,45 @@ describe('fidelidade ao documento de referência', () => {
     expect(await contentHash(p, 'CESS')).not.toBe(h);
   });
 
-  it.skipIf(!existsSync('/usr/bin/soffice'))('abre no LibreOffice (conversão para PDF)', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'docx-'));
-    try {
-      const { bytes } = await buildDataDictionary(await cessProject(), meta);
-      writeFileSync(join(dir, 'cess.docx'), bytes);
-      execFileSync('soffice', ['--headless', '--convert-to', 'pdf', '--outdir', dir, join(dir, 'cess.docx')], { timeout: 60_000, stdio: 'ignore' });
-      const pdf = readFileSync(join(dir, 'cess.pdf'));
-      const pages = count(pdf.toString('latin1'), /\/Type\s*\/Page[^s]/g);
-      // capa + convenções + índice + 3 módulos + outras + 2 apêndices
-      expect(pages).toBeGreaterThanOrEqual(9);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  }, 90_000);
+  it.skipIf(!existsSync('/usr/bin/soffice'))(
+    'abre no LibreOffice (conversão para PDF)',
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'docx-'));
+      try {
+        const { bytes } = await buildDataDictionary(await cessProject(), meta);
+        writeFileSync(join(dir, 'cess.docx'), bytes);
+        execFileSync('soffice', ['--headless', '--convert-to', 'pdf', '--outdir', dir, join(dir, 'cess.docx')], { timeout: 60_000, stdio: 'ignore' });
+        const pdf = readFileSync(join(dir, 'cess.pdf'));
+        const pages = count(pdf.toString('latin1'), /\/Type\s*\/Page[^s]/g);
+        // capa + convenções + índice + 3 módulos + outras + 2 apêndices
+        expect(pages).toBeGreaterThanOrEqual(9);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+    90_000,
+  );
 });
 
 describe('propriedades', () => {
   const ident = fc.stringMatching(/^[a-z][a-z0-9_]{0,8}$/);
-  const schemaArb = fc.uniqueArray(fc.record({ name: ident, cols: fc.uniqueArray(ident, { minLength: 1, maxLength: 5 }), tag: fc.option(fc.constantFrom('Módulo A — X', 'modulo b', 'Módulo 10: Y', 'core')) }), {
-    minLength: 1,
-    maxLength: 6,
-    selector: (t) => t.name,
-  });
+  const schemaArb = fc.uniqueArray(
+    fc.record({ name: ident, cols: fc.uniqueArray(ident, { minLength: 1, maxLength: 5 }), tag: fc.option(fc.constantFrom('Módulo A — X', 'modulo b', 'Módulo 10: Y', 'core')) }),
+    {
+      minLength: 1,
+      maxLength: 6,
+      selector: (t) => t.name,
+    },
+  );
 
   it('toda tabela e toda coluna aparecem exatamente uma vez', async () => {
     await fc.assert(
       fc.asyncProperty(schemaArb, async (defs) => {
         const sql = defs
-          .map((d) => `CREATE TABLE t_${d.name} (pk_id int PRIMARY KEY, ${d.cols.map((c) => `c_${c} text`).join(', ')});${d.tag ? `\n-- @erd:tags t_${d.name} ${JSON.stringify(d.tag)}` : ''}`)
+          .map(
+            (d) =>
+              `CREATE TABLE t_${d.name} (pk_id int PRIMARY KEY, ${d.cols.map((c) => `c_${c} text`).join(', ')});${d.tag ? `\n-- @erd:tags t_${d.name} ${JSON.stringify(d.tag)}` : ''}`,
+          )
           .join('\n');
         const p = await fromSql(sql);
         const { blocks } = buildOutline(p, meta).outline;

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Code2, Download, Plus, Table2, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Code2, Download, FileText, Plus, Table2, Trash2, X } from 'lucide-react';
 import type { Cardinality, Id, RefAction, Table } from '@erd/model/types';
 import { REF_ACTIONS } from '@erd/model/types';
 import { formatType, parseTypeString } from '@erd/model/columnType';
@@ -7,6 +7,7 @@ import { newId } from '@erd/model/naming';
 import { columnById, relCardinality, tableById } from '@erd/model/schema';
 import { allTags, autoTags, effectiveTags } from '@erd/model/tags';
 import { isModuleTag } from '@erd/docx/modules';
+import { openDocForm } from '../document/useDocUi';
 import { useProjectStore } from '../store/useProjectStore';
 import { useUi, revealTableInCode } from '../store/useUi';
 import {
@@ -24,7 +25,7 @@ import { downloadNote } from '../persistence/notes';
 import { NOTE_COLORS } from './nodes/NoteNode';
 
 /** Input que só comita no blur/Enter (uma entrada de undo por edição, não por tecla) */
-function CommitInput({
+export function CommitInput({
   value,
   onCommit,
   placeholder,
@@ -283,6 +284,16 @@ function TableInspector({ table }: { table: Table }) {
         >
           <Code2 size={13} /> Ver em código
         </button>
+        {(!table.comment?.trim() || table.columns.some((c) => !c.comment?.trim())) && (
+          <button
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 py-1.5 text-[11.5px] font-medium text-amber-800 hover:bg-amber-100"
+            onClick={() => openDocForm(table.id)}
+            title="Descrições que faltam no documento Word"
+            data-testid="fill-in-document"
+          >
+            <FileText size={13} /> Preencher no documento
+          </button>
+        )}
       </div>
       <Section title="Tags">
         <TagEditor id={table.id} />

@@ -24,7 +24,10 @@ export function diffProjects(before: Pick<Project, 'schema'> | null, after: Pick
       if (before) d.tablesAdded.push(t.name);
       continue;
     }
-    let changed = p.name !== t.name || (p.comment ?? '') !== (t.comment ?? '') || JSON.stringify([p.primaryKey, p.uniques, p.indexes, p.checks]) !== JSON.stringify([t.primaryKey, t.uniques, t.indexes, t.checks]);
+    let changed =
+      p.name !== t.name ||
+      (p.comment ?? '') !== (t.comment ?? '') ||
+      JSON.stringify([p.primaryKey, p.uniques, p.indexes, p.checks]) !== JSON.stringify([t.primaryKey, t.uniques, t.indexes, t.checks]);
     const pc = new Map(p.columns.map((c) => [c.id, c]));
     const nc = new Map(t.columns.map((c) => [c.id, c]));
     for (const [cid, c] of pc) {

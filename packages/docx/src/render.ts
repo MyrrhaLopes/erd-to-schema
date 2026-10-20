@@ -64,7 +64,11 @@ function blocks(list: Block[]): (Paragraph | Table)[] {
     switch (b.kind) {
       case 'cover':
         out.push(
-          new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: c.title.before }, children: [run(b.title, { size: c.title.size, bold: true, color: c.title.color })] }),
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { before: c.title.before },
+            children: [run(b.title, { size: c.title.size, bold: true, color: c.title.color })],
+          }),
           new Paragraph({ alignment: AlignmentType.CENTER, children: [run(b.subtitle, { size: c.subtitle.size, color: c.subtitle.color })] }),
           new Paragraph({ alignment: AlignmentType.CENTER, children: [run(b.edition, { size: c.edition.size })] }),
           new Paragraph({ children: [] }),

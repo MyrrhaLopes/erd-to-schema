@@ -111,6 +111,17 @@ export function CanvasEditor() {
                 showToast(`${m.by ?? 'Alguém'} restaurou a versão "${m.label ?? ''}"`);
                 return;
               }
+              if (m.type === 'drive') {
+                // documento no Drive: o toast chega para todos que estão no canvas
+                const by = m.by ?? 'Alguém';
+                if (m.event === 'published') showToast(`${by} publicou a v${m.version} no Drive`);
+                else if (m.event === 'failed') showToast(`A publicação no Drive falhou: ${m.error ?? ''}`);
+                else if (m.event === 'folder_changed') showToast(`${by} trocou a pasta do documento no Drive`);
+                else if (m.event === 'unchanged') showToast(`Nada mudou desde a v${m.version}`);
+                for (const k of ['project', 'publications', 'review']) void qc.invalidateQueries({ queryKey: ['drive', k] });
+                void qc.invalidateQueries({ queryKey: ['versions', canvasId] });
+                return;
+              }
               if (m.type !== 'permission-changed') return;
               if (m.role === null) {
                 showToast('Seu acesso a este projeto foi removido');

@@ -96,91 +96,92 @@ export async function requestPublish(deps: Deps, canvasId: string, projectName: 
 
 /** `/api/drive` */
 export function driveConfigRoutes(deps: Deps) {
-  return new Hono<AppEnv>()
-    .get('/config', (c) => {
-      requireUser(c.get('user'));
-      const kind = deps.drive?.provider.kind ?? driveProviderKind(deps.env);
-      const out: DriveConfig = {
-        enabled: !!deps.drive && !!kind,
-        provider: kind ?? 'google',
-        pickerApiKey: kind === 'google' ? (deps.env.GOOGLE_PICKER_API_KEY ?? null) : null,
-        appId: kind === 'google' ? (deps.env.GOOGLE_PROJECT_NUMBER ?? null) : null,
-        clientId: kind === 'google' ? (deps.env.GOOGLE_CLIENT_ID ?? null) : null,
-      };
-      return c.json(out);
-    });
+  return new Hono<AppEnv>().get('/config', (c) => {
+    requireUser(c.get('user'));
+    const kind = deps.drive?.provider.kind ?? driveProviderKind(deps.env);
+    const out: DriveConfig = {
+      enabled: !!deps.drive && !!kind,
+      provider: kind ?? 'google',
+      pickerApiKey: kind === 'google' ? (deps.env.GOOGLE_PICKER_API_KEY ?? null) : null,
+      appId: kind === 'google' ? (deps.env.GOOGLE_PROJECT_NUMBER ?? null) : null,
+      clientId: kind === 'google' ? (deps.env.GOOGLE_CLIENT_ID ?? null) : null,
+    };
+    return c.json(out);
+  });
 }
 
 /** `/api/projects/:id/drive...` */
 export function projectDriveRoutes(deps: Deps) {
   const { db } = deps;
-  return new Hono<AppEnv>()
-    .get('/:id/drive', async (c) => {
-      const user = requireUser(c.get('user'));
-      const a = await projectAccess(db, c.req.param('id'), user.id);
-      const [owner] = await db.select({ id: users.id, name: users.name }).from(users).where(eq(users.id, a.project.ownerId));
-      const drive = deps.drive;
-      const kind = drive?.provider.kind ?? null;
-      let account: DriveProject['account'] = { connected: false, email: null, name: null };
-      if (drive && (await drive.tokens.connected(a.project.ownerId))) {
-        const cached = accountCache.get(a.project.ownerId);
-        if (cached && Date.now() - cached.at < 300_000) account = { connected: true, email: cached.email, name: cached.name };
-        else {
-          try {
-            const who = await drive.provider.about(await drive.tokens.get(a.project.ownerId));
-            account = { connected: true, email: who.email ?? null, name: who.name ?? null };
-            accountCache.set(a.project.ownerId, { at: Date.now(), email: account.email, name: account.name });
-          } catch {
-            account = { connected: false, email: null, name: null };
+  return (
+    new Hono<AppEnv>()
+      .get('/:id/drive', async (c) => {
+        const user = requireUser(c.get('user'));
+        const a = await projectAccess(db, c.req.param('id'), user.id);
+        const [owner] = await db.select({ id: users.id, name: users.name }).from(users).where(eq(users.id, a.project.ownerId));
+        const drive = deps.drive;
+        const kind = drive?.provider.kind ?? null;
+        let account: DriveProject['account'] = { connected: false, email: null, name: null };
+        if (drive && (await drive.tokens.connected(a.project.ownerId))) {
+          const cached = accountCache.get(a.project.ownerId);
+          if (cached && Date.now() - cached.at < 300_000) account = { connected: true, email: cached.email, name: cached.name };
+          else {
+            try {
+              const who = await drive.provider.about(await drive.tokens.get(a.project.ownerId));
+              account = { connected: true, email: who.email ?? null, name: who.name ?? null };
+              accountCache.set(a.project.ownerId, { at: Date.now(), email: account.email, name: account.name });
+            } catch {
+              account = { connected: false, email: null, name: null };
+            }
           }
         }
-      }
-      const rows = drive
-        ? await db
-            .select({ b: driveBindings, name: canvases.name })
-            .from(driveBindings)
-            .innerJoin(canvases, eq(canvases.id, driveBindings.canvasId))
-            .where(and(eq(driveBindings.projectId, a.project.id), isNull(canvases.deletedAt)))
-            .orderBy(asc(canvases.position))
-        : [];
-      const out: DriveProject = {
-        enabled: !!drive && !!kind,
-        provider: kind ?? 'google',
-        isOwner: a.role === 'owner',
-        owner: owner ?? { id: a.project.ownerId, name: '?' },
-        account,
-        bindings: await Promise.all(rows.map((r) => bindingDto(deps, r.b, r.name))),
-      };
-      return c.json(out);
-    })
+        const rows = drive
+          ? await db
+              .select({ b: driveBindings, name: canvases.name })
+              .from(driveBindings)
+              .innerJoin(canvases, eq(canvases.id, driveBindings.canvasId))
+              .where(and(eq(driveBindings.projectId, a.project.id), isNull(canvases.deletedAt)))
+              .orderBy(asc(canvases.position))
+          : [];
+        const out: DriveProject = {
+          enabled: !!drive && !!kind,
+          provider: kind ?? 'google',
+          isOwner: a.role === 'owner',
+          owner: owner ?? { id: a.project.ownerId, name: '?' },
+          account,
+          bindings: await Promise.all(rows.map((r) => bindingDto(deps, r.b, r.name))),
+        };
+        return c.json(out);
+      })
 
-    /** Token curto do dono para o Google Picker (com `drive.file`, é o Picker que dá acesso à pasta) */
-    .get('/:id/drive/picker-token', async (c) => {
-      const user = requireUser(c.get('user'));
-      const a = await projectAccess(db, c.req.param('id'), user.id);
-      requireCan(a, 'driveConfigure');
-      const drive = requireDrive(deps);
-      let accessToken: string;
-      try {
-        accessToken = await drive.tokens.get(user.id);
-      } catch {
-        throw new HTTPException(409, { message: 'Conecte o seu Google Drive primeiro' });
-      }
-      const folders = drive.provider.kind === 'fake' ? (drive.provider as FakeDrive).listFolders(user.id) : [];
-      return c.json({ accessToken, folders }, 200, { 'Cache-Control': 'no-store' });
-    })
+      /** Token curto do dono para o Google Picker (com `drive.file`, é o Picker que dá acesso à pasta) */
+      .get('/:id/drive/picker-token', async (c) => {
+        const user = requireUser(c.get('user'));
+        const a = await projectAccess(db, c.req.param('id'), user.id);
+        requireCan(a, 'driveConfigure');
+        const drive = requireDrive(deps);
+        let accessToken: string;
+        try {
+          accessToken = await drive.tokens.get(user.id);
+        } catch {
+          throw new HTTPException(409, { message: 'Conecte o seu Google Drive primeiro' });
+        }
+        const folders = drive.provider.kind === 'fake' ? (drive.provider as FakeDrive).listFolders(user.id) : [];
+        return c.json({ accessToken, folders }, 200, { 'Cache-Control': 'no-store' });
+      })
 
-    /** Modo fake (E2E/dev): "conectar" sem OAuth */
-    .post('/:id/drive/fake-connect', async (c) => {
-      const user = requireUser(c.get('user'));
-      const a = await projectAccess(db, c.req.param('id'), user.id);
-      requireCan(a, 'driveConfigure');
-      const drive = requireDrive(deps);
-      if (drive.provider.kind !== 'fake') throw new HTTPException(404, { message: 'Não encontrado' });
-      await drive.tokens.connectFake(user.id);
-      accountCache.delete(user.id);
-      return c.json({ ok: true });
-    });
+      /** Modo fake (E2E/dev): "conectar" sem OAuth */
+      .post('/:id/drive/fake-connect', async (c) => {
+        const user = requireUser(c.get('user'));
+        const a = await projectAccess(db, c.req.param('id'), user.id);
+        requireCan(a, 'driveConfigure');
+        const drive = requireDrive(deps);
+        if (drive.provider.kind !== 'fake') throw new HTTPException(404, { message: 'Não encontrado' });
+        await drive.tokens.connectFake(user.id);
+        accountCache.delete(user.id);
+        return c.json({ ok: true });
+      })
+  );
 }
 
 /** `/api/canvases/:id/drive...` e `/api/canvases/:id/docx` */
@@ -247,34 +248,38 @@ export function canvasDriveRoutes(deps: Deps) {
       })
 
       /** Histórico (§7): só metadados, do mais novo para o mais antigo */
-      .get('/:id/drive/publications', zValidator('query', z.object({ before: z.iso.datetime().optional(), limit: z.coerce.number().int().min(1).max(100).default(50) })), async (c) => {
-        const user = requireUser(c.get('user'));
-        const a = await canvasAccess(db, c.req.param('id'), user.id);
-        const { before, limit } = c.req.valid('query');
-        const rows = await db
-          .select({ p: drivePublications, byName: users.name })
-          .from(drivePublications)
-          .leftJoin(users, eq(users.id, drivePublications.requestedBy))
-          .where(and(eq(drivePublications.canvasId, a.canvas.id), before ? lt(drivePublications.createdAt, new Date(before)) : undefined))
-          .orderBy(desc(drivePublications.createdAt))
-          .limit(limit);
-        const out: DrivePublication[] = rows.map(({ p, byName }) => ({
-          id: p.id,
-          action: p.action as DrivePublication['action'],
-          version: p.version,
-          revertedFrom: p.revertedFrom,
-          canvasVersionId: p.canvasVersionId,
-          requestedBy: p.requestedBy ? { id: p.requestedBy, name: byName ?? '' } : null,
-          folderName: p.folderName,
-          previousFolderName: p.previousFolderName,
-          oldFileDeletedAt: p.oldFileDeletedAt?.toISOString() ?? null,
-          sizeBytes: p.sizeBytes,
-          externalActor: p.externalActor ?? null,
-          error: p.error,
-          createdAt: p.createdAt.toISOString(),
-        }));
-        return c.json(out);
-      })
+      .get(
+        '/:id/drive/publications',
+        zValidator('query', z.object({ before: z.iso.datetime().optional(), limit: z.coerce.number().int().min(1).max(100).default(50) })),
+        async (c) => {
+          const user = requireUser(c.get('user'));
+          const a = await canvasAccess(db, c.req.param('id'), user.id);
+          const { before, limit } = c.req.valid('query');
+          const rows = await db
+            .select({ p: drivePublications, byName: users.name })
+            .from(drivePublications)
+            .leftJoin(users, eq(users.id, drivePublications.requestedBy))
+            .where(and(eq(drivePublications.canvasId, a.canvas.id), before ? lt(drivePublications.createdAt, new Date(before)) : undefined))
+            .orderBy(desc(drivePublications.createdAt))
+            .limit(limit);
+          const out: DrivePublication[] = rows.map(({ p, byName }) => ({
+            id: p.id,
+            action: p.action as DrivePublication['action'],
+            version: p.version,
+            revertedFrom: p.revertedFrom,
+            canvasVersionId: p.canvasVersionId,
+            requestedBy: p.requestedBy ? { id: p.requestedBy, name: byName ?? '' } : null,
+            folderName: p.folderName,
+            previousFolderName: p.previousFolderName,
+            oldFileDeletedAt: p.oldFileDeletedAt?.toISOString() ?? null,
+            sizeBytes: p.sizeBytes,
+            externalActor: p.externalActor ?? null,
+            error: p.error,
+            createdAt: p.createdAt.toISOString(),
+          }));
+          return c.json(out);
+        },
+      )
 
       /** Primeira escolha da pasta (cria o vínculo) ou troca de pasta (§5), só o dono */
       .put('/:id/drive/folder', zValidator('json', DriveFolderZ), async (c) => {
@@ -293,7 +298,8 @@ export function canvasDriveRoutes(deps: Deps) {
         try {
           folder = await drive.provider.getFolder(token, folderId);
         } catch (e) {
-          if (e instanceof DriveError && (e.code === 'not_found' || e.code === 'forbidden')) throw new HTTPException(422, { message: 'Pasta não encontrada ou sem acesso. Escolha a pasta pelo seletor do Google.' });
+          if (e instanceof DriveError && (e.code === 'not_found' || e.code === 'forbidden'))
+            throw new HTTPException(422, { message: 'Pasta não encontrada ou sem acesso. Escolha a pasta pelo seletor do Google.' });
           throw e;
         }
         if (!folder.isFolder) throw new HTTPException(422, { message: 'O item escolhido não é uma pasta' });
@@ -311,7 +317,8 @@ export function canvasDriveRoutes(deps: Deps) {
           await db.insert(auditLog).values({ projectId: a.project.id, actorId: user.id, action: 'drive.connected', payload: { canvasId: a.canvas.id, folder: folder.name } });
           return c.json({ status: 'created' as const, jobId: null }, 201);
         }
-        if (b.folderId === folder.id && b.connectedUserId === user.id && b.status !== 'paused' && b.status !== 'needs_folder') return c.json({ status: 'unchanged' as const, jobId: null }, 200);
+        if (b.folderId === folder.id && b.connectedUserId === user.id && b.status !== 'paused' && b.status !== 'needs_folder')
+          return c.json({ status: 'unchanged' as const, jobId: null }, 200);
         if (b.status === 'paused' || !b.fileId) {
           await db
             .update(driveBindings)
@@ -330,7 +337,10 @@ export function canvasDriveRoutes(deps: Deps) {
         const user = requireUser(c.get('user'));
         const a = await canvasAccess(db, c.req.param('id'), user.id);
         requireCan(a, 'driveConfigure');
-        await db.update(driveBindings).set({ autoPublish: c.req.valid('json').autoPublish, updatedAt: new Date() }).where(eq(driveBindings.canvasId, a.canvas.id));
+        await db
+          .update(driveBindings)
+          .set({ autoPublish: c.req.valid('json').autoPublish, updatedAt: new Date() })
+          .where(eq(driveBindings.canvasId, a.canvas.id));
         return c.json({ ok: true });
       })
 
@@ -341,7 +351,10 @@ export function canvasDriveRoutes(deps: Deps) {
         requireCan(a, 'driveConfigure');
         const drive = requireDrive(deps);
         if (!(await drive.binding(a.canvas.id))) throw new HTTPException(404, { message: 'Este canvas não está no Drive' });
-        const jobId = await drive.jobs.send({ type: 'disconnect', canvasId: a.canvas.id, deleteFile: c.req.valid('query').deleteFile === 'true', requestedBy: user.id }, a.canvas.id);
+        const jobId = await drive.jobs.send(
+          { type: 'disconnect', canvasId: a.canvas.id, deleteFile: c.req.valid('query').deleteFile === 'true', requestedBy: user.id },
+          a.canvas.id,
+        );
         return c.json({ jobId }, 202);
       })
   );

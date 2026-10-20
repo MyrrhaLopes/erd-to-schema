@@ -87,7 +87,10 @@ export function fileNameFor(content: DocContent, projectName: string) {
 const fmtDate = (d: Date) => d.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
 
 export function fillTemplate(s: string, meta: DocMeta) {
-  return s.replace(/\{projeto\}/g, meta.projectName).replace(/\{versao\}/g, String(meta.version)).replace(/\{data\}/g, fmtDate(meta.publishedAt));
+  return s
+    .replace(/\{projeto\}/g, meta.projectName)
+    .replace(/\{versao\}/g, String(meta.version))
+    .replace(/\{data\}/g, fmtDate(meta.publishedAt));
 }
 
 /** Project + DocContent → árvore do documento e o resumo para a tela de revisão */
@@ -135,7 +138,10 @@ export function buildOutline(project: DocProject, meta: DocMeta): { outline: Out
   table('modules', ['Módulo', 'Responsabilidade', 'Tabelas'], indexRows.length ? indexRows : [{ cells: [DASH, DASH, DASH] }]);
 
   const relCount = new Map<Id, number>();
-  const sections = [...mods.modules.map((m) => ({ title: m.title, note: m.note, tables: m.tables })), ...(mods.others.length ? [{ title: 'Outras tabelas', note: null, tables: mods.others }] : [])];
+  const sections = [
+    ...mods.modules.map((m) => ({ title: m.title, note: m.note, tables: m.tables })),
+    ...(mods.others.length ? [{ title: 'Outras tabelas', note: null, tables: mods.others }] : []),
+  ];
   for (const s of sections) {
     blocks.push({ kind: 'heading', level: 1, text: s.title });
     if (s.note) for (const b of markdownToBlocks(s.note.content)) blocks.push(b);
@@ -146,7 +152,8 @@ export function buildOutline(project: DocProject, meta: DocMeta): { outline: Out
       for (const text of generatedBullets(t)) blocks.push({ kind: 'bullet', text });
       for (const rule of content.tables[t.id]?.rules ?? []) if (rule.trim()) blocks.push({ kind: 'bullet', text: rule.trim() });
       const fields = fieldRows(schema, t, content.typeStyle);
-      for (const col of t.columns) if (!col.comment?.trim()) pending.push({ kind: 'column-description', label: `Descrição de ${t.name}.${col.name}`, tableId: t.id, columnId: col.id });
+      for (const col of t.columns)
+        if (!col.comment?.trim()) pending.push({ kind: 'column-description', label: `Descrição de ${t.name}.${col.name}`, tableId: t.id, columnId: col.id });
       table(
         'fields',
         FIELD_HEADER,
@@ -154,8 +161,7 @@ export function buildOutline(project: DocProject, meta: DocMeta): { outline: Out
       );
       const rels = relationshipRows(project as Project, t, content);
       relCount.set(t.id, rels.length);
-      for (const r of rels)
-        if (!r.hasFunction) pending.push({ kind: 'relationship-function', label: `Função de ${r.cells[0]}`, tableId: t.id, relKey: r.key, side: r.side });
+      for (const r of rels) if (!r.hasFunction) pending.push({ kind: 'relationship-function', label: `Função de ${r.cells[0]}`, tableId: t.id, relKey: r.key, side: r.side });
       if (rels.length) {
         blocks.push({ kind: 'heading', level: 3, text: 'Relacionamentos e função' });
         table(
@@ -170,15 +176,30 @@ export function buildOutline(project: DocProject, meta: DocMeta): { outline: Out
   // apêndices
   blocks.push({ kind: 'heading', level: 1, text: 'Apêndice A — Resumo das restrições UNIQUE' });
   const uniques = schema.tables.map((t) => ({ t, u: uniqueSummary(t) })).filter((x) => x.u.length);
-  if (uniques.length) table('appendix', ['Tabela', 'Restrições UNIQUE'], uniques.map(({ t, u }) => ({ cells: [t.name, u.join('; ')] })));
+  if (uniques.length)
+    table(
+      'appendix',
+      ['Tabela', 'Restrições UNIQUE'],
+      uniques.map(({ t, u }) => ({ cells: [t.name, u.join('; ')] })),
+    );
   else blocks.push({ kind: 'paragraph', text: 'Nenhuma restrição UNIQUE além das chaves primárias.' });
   blocks.push({ kind: 'heading', level: 1, text: 'Apêndice B — Resumo dos índices recomendados' });
   const idx = schema.tables.map((t) => ({ t, i: indexSummary(t) })).filter((x) => x.i.length);
-  if (idx.length) table('appendix', ['Tabela', 'Índices'], idx.map(({ t, i }) => ({ cells: [t.name, i.join('; ')] })));
+  if (idx.length)
+    table(
+      'appendix',
+      ['Tabela', 'Índices'],
+      idx.map(({ t, i }) => ({ cells: [t.name, i.join('; ')] })),
+    );
   else blocks.push({ kind: 'paragraph', text: 'Nenhum índice além das chaves primárias e das restrições UNIQUE.' });
 
   const fileName = fileNameFor(content, meta.projectName);
-  const reviewTable = (t: { id: Id; name: string; columns: unknown[] }): ReviewTable => ({ id: t.id, name: t.name, columns: t.columns.length, relationships: relCount.get(t.id) ?? 0 });
+  const reviewTable = (t: { id: Id; name: string; columns: unknown[] }): ReviewTable => ({
+    id: t.id,
+    name: t.name,
+    columns: t.columns.length,
+    relationships: relCount.get(t.id) ?? 0,
+  });
   const review: DocReview = {
     modules: mods.modules.map((m) => ({
       key: m.key,

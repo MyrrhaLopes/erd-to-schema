@@ -426,6 +426,9 @@ importers:
       '@types/pg':
         specifier: ^8.23.1
         version: 8.23.1
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       pg:
         specifier: ^8.23.1
         version: 8.23.1

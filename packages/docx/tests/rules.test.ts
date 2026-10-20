@@ -58,14 +58,22 @@ describe('tabela de campos (§1.3)', () => {
     const status = rowOf(blocks, 'Person', 'status');
     expect(status.cells.slice(2)).toEqual(['Status', 'Não', 'Não', '—', 'Não', 'ACTIVE', 'ACTIVE | INACTIVE | BLOCKED']);
     expect(status.fill).toBe('EAF4EE');
-    expect(rowOf(blocks, 'Person', 'created_at').cells.slice(2, 3).concat(rowOf(blocks, 'Person', 'created_at').cells[7])).toEqual(['Timestamptz', 'now()']);
+    expect(
+      rowOf(blocks, 'Person', 'created_at')
+        .cells.slice(2, 3)
+        .concat(rowOf(blocks, 'Person', 'created_at').cells[7]),
+    ).toEqual(['Timestamptz', 'now()']);
     expect(rowOf(blocks, 'Person', 'id').fill).toBeUndefined();
 
     const login = rowOf(blocks, 'User', 'loginId');
     expect(login.cells[6]).toBe('Parcial');
     expect(login.cells[8]).toBe('UNIQUE(loginId) WHERE status = ACTIVE');
     expect(rowOf(blocks, 'User', 'personId').cells.slice(5)).toEqual(['Person.id', 'Sim', '—', 'ON DELETE CASCADE']);
-    expect(rowOf(blocks, 'User', 'preferences').cells.slice(2, 3).concat(rowOf(blocks, 'User', 'preferences').cells[7])).toEqual(['JsonB', '{}']);
+    expect(
+      rowOf(blocks, 'User', 'preferences')
+        .cells.slice(2, 3)
+        .concat(rowOf(blocks, 'User', 'preferences').cells[7]),
+    ).toEqual(['JsonB', '{}']);
 
     const client = rowOf(blocks, 'Project', 'clientId');
     expect(client.cells.slice(3)).toEqual(['Sim', 'Não', 'User.id', 'Não', 'NULL', 'ON DELETE SET NULL']);
@@ -96,10 +104,21 @@ describe('relacionamentos (§1.3)', () => {
       ['Project → AuditLog (lógico)', '1 : N', 'AuditLog.entity → Project.title', 'Aplicação', '—'],
       ['Project → User (via ProjectMember)', 'N : N', 'via ProjectMember', 'CASCADE', '—'],
     ]);
-    expect(relsOf(blocks, 'AuditLog')!.rows.find((r) => r.cells[0].endsWith('(lógico)'))!.cells).toEqual(['AuditLog → Project (lógico)', 'N : 1', 'AuditLog.entity → Project.title', 'Aplicação', 'registra']);
+    expect(relsOf(blocks, 'AuditLog')!.rows.find((r) => r.cells[0].endsWith('(lógico)'))!.cells).toEqual([
+      'AuditLog → Project (lógico)',
+      'N : 1',
+      'AuditLog.entity → Project.title',
+      'Aplicação',
+      'registra',
+    ]);
     const user = relsOf(blocks, 'User')!;
     expect(user.rows[0].cells.slice(0, 2)).toEqual(['User → Person', '1 : 1']);
-    expect(user.rows.find((r) => r.cells[0] === 'User → Project (client)')!.cells.slice(1, 2).concat(user.rows.find((r) => r.cells[0] === 'User → Project (client)')!.cells[4])).toEqual(['0..1 : N', 'projetos em que é cliente']);
+    expect(
+      user.rows
+        .find((r) => r.cells[0] === 'User → Project (client)')!
+        .cells.slice(1, 2)
+        .concat(user.rows.find((r) => r.cells[0] === 'User → Project (client)')!.cells[4]),
+    ).toEqual(['0..1 : N', 'projetos em que é cliente']);
   });
 });
 

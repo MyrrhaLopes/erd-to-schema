@@ -13,7 +13,9 @@
     "typecheck": "tsc -p .",
     "test": "vitest run",
     "lint": "oxlint -c ../../.oxlintrc.json .",
-    "env:check": "tsx --env-file-if-exists=../../.env src/envCheck.ts"
+    "env:check": "tsx --env-file-if-exists=../../.env src/envCheck.ts",
+    "drive:smoke": "tsx --env-file-if-exists=../../.env src/scripts/driveSmoke.ts",
+    "auth:encrypt-tokens": "tsx --env-file-if-exists=../../.env src/scripts/encryptTokens.ts"
   },
   "dependencies": {
     "@erd/collab": "workspace:*",

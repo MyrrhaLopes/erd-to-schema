@@ -91,7 +91,10 @@ export class GoogleDrive implements DriveProvider {
   }
 
   async getFolder(token: string, folderId: string): Promise<DriveFolder> {
-    const r = await this.call<RawFile & { capabilities?: { canAddChildren?: boolean } }>(token, `${API}/files/${encodeURIComponent(folderId)}?fields=id,name,mimeType,parents,driveId,capabilities(canAddChildren)`);
+    const r = await this.call<RawFile & { capabilities?: { canAddChildren?: boolean } }>(
+      token,
+      `${API}/files/${encodeURIComponent(folderId)}?fields=id,name,mimeType,parents,driveId,capabilities(canAddChildren)`,
+    );
     const names = [r!.name];
     let parent = r!.parents?.[0];
     for (let i = 0; parent && i < 4; i++) {
@@ -119,7 +122,12 @@ export class GoogleDrive implements DriveProvider {
       const u = new URL(`${UPLOAD}/files${path}?uploadType=resumable&supportsAllDrives=true&fields=${FILE_FIELDS}`);
       const start = await this.fetchImpl(u, {
         method,
-        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json; charset=UTF-8', 'x-upload-content-type': DOCX_MIME, 'x-upload-content-length': String(bytes.byteLength) },
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/json; charset=UTF-8',
+          'x-upload-content-type': DOCX_MIME,
+          'x-upload-content-length': String(bytes.byteLength),
+        },
         body: JSON.stringify(metadata),
       });
       if (!start.ok) throw new DriveError(start.status >= 500 ? 'server' : start.status === 429 ? 'rate_limited' : 'bad_request', `upload ${start.status}`, start.status);

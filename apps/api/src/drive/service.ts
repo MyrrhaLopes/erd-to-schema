@@ -151,7 +151,12 @@ export class DriveService {
     } catch (e) {
       if (!(e instanceof DriveError) || e.code !== 'invalid_grant') throw e;
       await this.update(b.canvasId, { status: 'needs_reconnect' });
-      await this.anomaly(b, 'needs_reconnect', 'Reconecte o Google Drive', 'O acesso ao Google Drive expirou ou foi revogado. Conecte o Drive de novo para voltar a publicar o documento.');
+      await this.anomaly(
+        b,
+        'needs_reconnect',
+        'Reconecte o Google Drive',
+        'O acesso ao Google Drive expirou ou foi revogado. Conecte o Drive de novo para voltar a publicar o documento.',
+      );
       return null;
     }
   }
@@ -202,7 +207,12 @@ export class DriveService {
     if (!token) return;
     const file = await this.d.provider.getFile(token, b.fileId);
     if (!file || file.trashed) {
-      await this.anomaly(b, `missing:${b.fileId}`, 'O documento sumiu do Drive', 'O arquivo foi apagado ou movido para a lixeira no Google Drive. A próxima publicação cria um novo.');
+      await this.anomaly(
+        b,
+        `missing:${b.fileId}`,
+        'O documento sumiu do Drive',
+        'O arquivo foi apagado ou movido para a lixeira no Google Drive. A próxima publicação cria um novo.',
+      );
       return;
     }
     await this.inspect(b, file, token, 'audit');
@@ -241,7 +251,14 @@ export class DriveService {
     if (!b || !p || b.status === 'paused') return;
     const fail = async (error: string) => {
       DRIVE_METRICS.publish.failed++;
-      await this.record(job.canvasId, 'failed', { canvasVersionId: job.canvasVersionId, requestedBy: job.requestedBy, revertedFrom: job.revertedFrom, error, folderId: b.folderId, folderName: b.folderName });
+      await this.record(job.canvasId, 'failed', {
+        canvasVersionId: job.canvasVersionId,
+        requestedBy: job.requestedBy,
+        revertedFrom: job.revertedFrom,
+        error,
+        folderId: b.folderId,
+        folderName: b.folderName,
+      });
       // a versão do canvas de uma publicação que não saiu deixa de ser protegida
       await this.d.db
         .update(canvasVersions)
@@ -298,7 +315,8 @@ export class DriveService {
           .update(canvasVersions)
           .set({ label: `Publicação v${version} no Drive${job.revertedFrom ? ` (reversão da v${job.revertedFrom})` : ''}`, protected: true })
           .where(eq(canvasVersions.id, job.canvasVersionId));
-        if (recreated) await this.record(job.canvasId, 'recreated', { fileId: done.id, previousFileId: b.fileId, folderId: b.folderId, folderName: b.folderName }, tx as unknown as Db);
+        if (recreated)
+          await this.record(job.canvasId, 'recreated', { fileId: done.id, previousFileId: b.fileId, folderId: b.folderId, folderName: b.folderName }, tx as unknown as Db);
         await this.record(
           job.canvasId,
           'published',
@@ -333,7 +351,14 @@ export class DriveService {
           },
           tx as unknown as Db,
         );
-        await tx.insert(auditLog).values({ projectId: p.projectId, actorId: job.requestedBy, action: 'drive.published', payload: { canvasId: job.canvasId, version, revertedFrom: job.revertedFrom ?? null } });
+        await tx
+          .insert(auditLog)
+          .values({
+            projectId: p.projectId,
+            actorId: job.requestedBy,
+            action: 'drive.published',
+            payload: { canvasId: job.canvasId, version, revertedFrom: job.revertedFrom ?? null },
+          });
       });
       DRIVE_METRICS.publish.published++;
       DRIVE_METRICS.publishCount++;
@@ -343,12 +368,21 @@ export class DriveService {
       if (e instanceof DriveError && e.retryable && ctx.retryCount < ctx.retryLimit) throw e;
       if (e instanceof DriveError && (e.code === 'forbidden' || e.code === 'not_found')) {
         await this.update(job.canvasId, { status: 'needs_folder' });
-        await this.anomaly(b, 'needs_folder', 'Escolha a pasta do documento de novo', `Não foi possível gravar na pasta "${b.folderName}" do Google Drive. Escolha a pasta de novo em Configurações do projeto → Documento.`);
+        await this.anomaly(
+          b,
+          'needs_folder',
+          'Escolha a pasta do documento de novo',
+          `Não foi possível gravar na pasta "${b.folderName}" do Google Drive. Escolha a pasta de novo em Configurações do projeto → Documento.`,
+        );
       } else if (e instanceof DriveError && e.code === 'invalid_grant') {
         await this.update(job.canvasId, { status: 'needs_reconnect' });
-        await this.anomaly(b, 'needs_reconnect', 'Reconecte o Google Drive', 'O acesso ao Google Drive expirou ou foi revogado. Conecte o Drive de novo para voltar a publicar o documento.');
-      }
-      else if (!(e instanceof DriveError) && ctx.retryCount < ctx.retryLimit) throw e;
+        await this.anomaly(
+          b,
+          'needs_reconnect',
+          'Reconecte o Google Drive',
+          'O acesso ao Google Drive expirou ou foi revogado. Conecte o Drive de novo para voltar a publicar o documento.',
+        );
+      } else if (!(e instanceof DriveError) && ctx.retryCount < ctx.retryLimit) throw e;
       this.d.log.warn({ err: e, canvasId: job.canvasId }, 'publicação no Drive falhou');
       await fail(errText(e));
     }
@@ -367,8 +401,21 @@ export class DriveService {
     const prev = { folderId: b.folderId, folderName: b.folderName, fileId: b.fileId, tokenUserId: b.connectedUserId };
     if (!b.fileId) {
       // nada publicado ainda: só aponta o vínculo para a pasta nova
-      await this.update(job.canvasId, { folderId: job.folderId, folderName: job.folderName, folderPath: job.folderPath, connectedUserId: job.tokenUserId, status: 'active', anomaly: null });
-      await this.record(job.canvasId, 'folder_changed', { requestedBy: job.requestedBy, folderId: job.folderId, folderName: job.folderName, previousFolderId: prev.folderId, previousFolderName: prev.folderName });
+      await this.update(job.canvasId, {
+        folderId: job.folderId,
+        folderName: job.folderName,
+        folderPath: job.folderPath,
+        connectedUserId: job.tokenUserId,
+        status: 'active',
+        anomaly: null,
+      });
+      await this.record(job.canvasId, 'folder_changed', {
+        requestedBy: job.requestedBy,
+        folderId: job.folderId,
+        folderName: job.folderName,
+        previousFolderId: prev.folderId,
+        previousFolderName: prev.folderName,
+      });
       return;
     }
     const token = await this.token(b, job.tokenUserId);
@@ -432,7 +479,14 @@ export class DriveService {
           .insert(drivePendingDeletions)
           .values({ fileId: prev.fileId!, canvasId: job.canvasId, tokenUserId: prev.tokenUserId, folderId: prev.folderId, folderName: prev.folderName })
           .onConflictDoNothing();
-        await tx.insert(auditLog).values({ projectId: p.projectId, actorId: job.requestedBy, action: 'drive.folder_changed', payload: { canvasId: job.canvasId, from: prev.folderName, to: job.folderName } });
+        await tx
+          .insert(auditLog)
+          .values({
+            projectId: p.projectId,
+            actorId: job.requestedBy,
+            action: 'drive.folder_changed',
+            payload: { canvasId: job.canvasId, from: prev.folderName, to: job.folderName },
+          });
       });
       await this.d.events.broadcast(job.canvasId, { type: 'drive', event: 'folder_changed', by: await this.userName(job.requestedBy), link: f.webViewLink });
     } catch (e) {
@@ -490,18 +544,42 @@ export class DriveService {
         .onConflictDoNothing();
     }
     // sem o arquivo: uma reconexão cria outro (o "congelado", se ficou, não é mais do app)
-    await this.update(job.canvasId, { status: 'paused', fileId: null, fileName: null, webViewLink: null, lastMd5: null, lastRevisionId: null, lastContentHash: null, anomaly: null, lock: 'none' });
-    await this.record(job.canvasId, 'disconnected', { requestedBy: job.requestedBy, previousFileId: b.fileId, folderId: b.folderId, folderName: b.folderName, error: job.deleteFile ? null : 'arquivo mantido no Drive' });
+    await this.update(job.canvasId, {
+      status: 'paused',
+      fileId: null,
+      fileName: null,
+      webViewLink: null,
+      lastMd5: null,
+      lastRevisionId: null,
+      lastContentHash: null,
+      anomaly: null,
+      lock: 'none',
+    });
+    await this.record(job.canvasId, 'disconnected', {
+      requestedBy: job.requestedBy,
+      previousFileId: b.fileId,
+      folderId: b.folderId,
+      folderName: b.folderName,
+      error: job.deleteFile ? null : 'arquivo mantido no Drive',
+    });
     if (job.deleteFile && b.fileId) await this.cleanup(b.fileId);
   }
 
   /** Transferência de posse (§6): as publicações seguem no Drive do dono antigo até o novo escolher a pasta */
   async ownerTransferred(projectId: string, from: string, to: string, by: string) {
-    const rows = await this.d.db.select().from(driveBindings).where(and(eq(driveBindings.projectId, projectId), ne(driveBindings.status, 'paused')));
+    const rows = await this.d.db
+      .select()
+      .from(driveBindings)
+      .where(and(eq(driveBindings.projectId, projectId), ne(driveBindings.status, 'paused')));
     for (const b of rows) {
       const status = b.connectedUserId === to ? 'active' : 'transfer_pending';
       await this.update(b.canvasId, { status });
-      await this.record(b.canvasId, 'owner_transferred', { requestedBy: by, folderId: b.folderId, folderName: b.folderName, error: status === 'transfer_pending' ? `aguardando o novo dono escolher uma pasta` : null });
+      await this.record(b.canvasId, 'owner_transferred', {
+        requestedBy: by,
+        folderId: b.folderId,
+        folderName: b.folderName,
+        error: status === 'transfer_pending' ? `aguardando o novo dono escolher uma pasta` : null,
+      });
     }
     return rows.filter((b) => b.connectedUserId === from).length > 0;
   }

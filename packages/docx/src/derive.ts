@@ -325,7 +325,8 @@ export function detectConventions(schema: SchemaModel, content: DocContent): Con
     const audit = AUDIT.filter((a) => tables.filter((t) => t.columns.some((c) => snake(c.name) === a)).length * 2 >= tables.length);
     if (audit.length) out.push({ key: 'audit', name: 'Colunas de auditoria', pattern: audit.join(', '), detected: true });
     const statusEnums = new Map<string, number>();
-    for (const t of tables) for (const c of t.columns) if (c.name.toLowerCase() === 'status' && enumOf(schema, c)) statusEnums.set(c.type.base, (statusEnums.get(c.type.base) ?? 0) + 1);
+    for (const t of tables)
+      for (const c of t.columns) if (c.name.toLowerCase() === 'status' && enumOf(schema, c)) statusEnums.set(c.type.base, (statusEnums.get(c.type.base) ?? 0) + 1);
     const common = [...statusEnums.entries()].filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1])[0];
     if (common) {
       const e = schema.enums.find((x) => x.name === common[0])!;

@@ -6,6 +6,8 @@ import { erdKind } from '../kinds/erd';
 import { ChangeToast, ExportDialog, HelpDialog } from '../ui/Dialogs';
 import { useUi } from '../store/useUi';
 import { useProjectStore } from '../store/useProjectStore';
+import { DocumentDialog } from '../document/DocumentDialog';
+import { ReviewDialog } from '../document/ReviewDialog';
 
 function Splitter() {
   const set = useUi((s) => s.set);
@@ -76,6 +78,8 @@ export function Editor({ error, banner, tabs }: { error?: string; banner?: React
       </div>
       <ExportDialog />
       <HelpDialog />
+      {loaded && <DocumentDialog />}
+      {loaded && <ReviewDialog />}
     </ReactFlowProvider>
   );
 }

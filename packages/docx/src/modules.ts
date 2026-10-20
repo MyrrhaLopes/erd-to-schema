@@ -5,13 +5,7 @@ import { effectiveTags } from '@erd/model/tags';
 export const MODULE_RE = /^m[óo]dulo\s+(.+)$/i;
 
 /** Normaliza para comparar: sem acento, minúsculas, espaços simples */
-export const fold = (s: string) =>
-  s
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
+export const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
 export function isModuleTag(tag: string) {
   return MODULE_RE.test(tag.trim());

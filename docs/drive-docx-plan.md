@@ -1,5 +1,7 @@
 # Dicionário de dados em Word, publicado numa pasta do Google Drive: plano
 
+> **Implementado** (fases 1 a 4; a fase 0 precisa de contas Google reais e roda com `pnpm drive:smoke`). As diferenças em relação ao plano estão no fim deste documento.
+>
 > Plano para gerar automaticamente, a partir do modelo do canvas, um documento Word com a estrutura e a formatação do modelo de referência `Modelo_Dados_CESS_Revisado.docx`, e publicá-lo numa pasta do Google Drive do dono do projeto. A aplicação é o **único caminho de edição** do arquivo: ele fica bloqueado, as reversões são feitas pelo histórico de versões do próprio app, e trocar de pasta exclui definitivamente o arquivo antigo. Escrito a partir do código atual (`packages/model`, `packages/crdt`, `apps/api`, `apps/web`) e do XML do documento de referência.
 
 ## Pedido e decisões registradas
@@ -525,3 +527,17 @@ Cada fase pode ir para produção sozinha.
 | Tags de módulo inconsistentes ("Modulo A" e "Módulo A") | O casamento ignora acento e maiúsculas e trata as duas como o mesmo módulo; a tela de revisão mostra a grafia usada e avisa sobre a variação. |
 | Documento grande (200+ tabelas) | O `docx` gera centenas de páginas em menos de um segundo no Node; upload *resumable* acima de 5 MB; métrica `drive_publish_seconds`. |
 | Fidelidade visual diferente entre Word, LibreOffice e Google Docs | Usar só recursos que a referência já usa (sem campos, sem listas numeradas, sem estilos de tabela complexos) e o teste visual. |
+
+## Diferenças em relação ao plano (implementação)
+
+- **Fase 0** não foi executada aqui (precisa de duas contas Google reais). O script `pnpm drive:smoke` faz os itens (a) a (e) e o ciclo de troca de pasta; o item (f), o Picker, é manual. O código já trata as duas alternativas que a fase 0 poderia apontar: apagar revisões antigas é "best effort" (falha só gera log), e a exclusão definitiva tenta de novo depois de desbloquear se o Drive recusar por causa da restrição.
+- **Fidelidade:** o `Modelo_Dados_CESS_Revisado.docx` não está no repositório. O teste de fidelidade (`packages/docx/tests/fidelity.test.ts`) gera o documento da fixture CESS (`cess.sql` + `cess.doc.json`) e compara o XML com os **valores medidos** do §1.1 (página, margens, fontes, cores por tipo de tabela e de linha, quebra de página no Heading 1, larguras, rodapé). O teste visual virou uma conversão no LibreOffice (`soffice --convert-to pdf`, roda quando o `soffice` existe) que confere que o arquivo abre e tem as páginas esperadas; a comparação por imagem com a referência entra quando o arquivo de referência for versionado.
+- **`@erd:tags` com aspas:** tags com espaço (as de módulo) saem entre aspas nos três formatos (`-- @erd:tags orders "Módulo B — Pedidos"`), e o Inspector preserva a grafia de tags que começam com "Módulo".
+- **Formulário no Y.Doc:** a raiz `doc` é achatada (uma chave por campo, LWW por campo) e validada por zod; o documento sem formulário projeta sem `doc`.
+- **Hash revisado:** a tela de revisão calcula o `contentHash` no worker do navegador (o mesmo código da API); a API recalcula e recusa (409) se não bater.
+- **Desconectar** não apaga o vínculo: ele fica `paused` (sem arquivo), para a numeração das versões continuar ao escolher uma pasta de novo.
+- **Avisos sem repetição:** `drive_bindings.anomaly` guarda a última anomalia avisada; a auditoria de 6 h não repete o mesmo aviso. Os avisos usam a preferência de e-mail nova "Avisos do documento no Google Drive"; a notificação de transferência de posse usa a de "membros".
+- **`drive_pending_deletions`** ganhou `folder_id`, `folder_name`, `next_attempt_at` e `gave_up_at` (a interface mostra "exclua manualmente" depois de 24 h). A varredura roda a cada 10 min.
+- **Uma fila só:** todos os jobs do Drive estão na fila `drive` (política `singleton` do pg-boss com `singletonKey = canvasId`), na mesma instância pg-boss dos e-mails, para publicação, troca de pasta, limpeza e desconexão do mesmo canvas nunca rodarem juntas.
+- **Drive falso no E2E:** `DRIVE_PROVIDER=fake` é aceito também nas imagens de produção, desde que o `APP_URL` não seja HTTPS (o E2E do CI roda contra `http://localhost:8081`).
+- **Publicação automática** (fase 4): `drive_bindings.auto_publish`, ligada pelo dono na aba Drive; salvar uma versão nomeada enfileira a publicação sem a tela de revisão.

@@ -40,7 +40,10 @@ async function initial(): Promise<ProjectDoc> {
 }
 
 async function newProject(owner: B) {
-  const r = await owner.json<{ id: string; canvasId: string }>('/api/projects', { method: 'POST', json: { name: 'Loja', initialState: Buffer.from(fromProject(await initial())).toString('base64') } });
+  const r = await owner.json<{ id: string; canvasId: string }>('/api/projects', {
+    method: 'POST',
+    json: { name: 'Loja', initialState: Buffer.from(fromProject(await initial())).toString('base64') },
+  });
   expect(r.status).toBe(201);
   return r.body;
 }
@@ -52,15 +55,23 @@ async function edit(b: B, canvasId: string, recipe: (d: ProjectDoc) => ProjectDo
   const sv = Y.encodeStateVector(doc);
   const before = projectDoc(doc);
   doc.transact(() => applyDiff(doc, before, recipe(structuredClone(before))), LOCAL_ORIGIN);
-  const r = await b.req(`/api/canvases/${canvasId}/updates`, { method: 'POST', body: Y.encodeStateAsUpdate(doc, sv) as BodyInit, headers: { 'content-type': 'application/octet-stream' } });
+  const r = await b.req(`/api/canvases/${canvasId}/updates`, {
+    method: 'POST',
+    body: Y.encodeStateAsUpdate(doc, sv) as BodyInit,
+    headers: { 'content-type': 'application/octet-stream' },
+  });
   expect(r.status).toBe(200);
 }
 
-const review = async (b: B, canvasId: string) => (await b.json<{ hash: string; nextVersion: number; unchanged: boolean; review: { modules: { module: string }[] } }>(`/api/canvases/${canvasId}/drive/review`)).body;
+const review = async (b: B, canvasId: string) =>
+  (await b.json<{ hash: string; nextVersion: number; unchanged: boolean; review: { modules: { module: string }[] } }>(`/api/canvases/${canvasId}/drive/review`)).body;
 
 async function publish(b: B, canvasId: string, extra: { revertedFrom?: number } = {}) {
   const { hash } = await review(b, canvasId);
-  const r = await b.json<{ status: string; version: number; jobId: string | null }>(`/api/canvases/${canvasId}/drive/publish`, { method: 'POST', json: { reviewedHash: hash, ...extra } });
+  const r = await b.json<{ status: string; version: number; jobId: string | null }>(`/api/canvases/${canvasId}/drive/publish`, {
+    method: 'POST',
+    json: { reviewedHash: hash, ...extra },
+  });
   await idle();
   return r;
 }
@@ -153,7 +164,11 @@ describe('publicar (§3)', () => {
     const docx = await vi.req(`/api/canvases/${p.canvasId}/docx`);
     expect(docx.status).toBe(200);
     expect(docx.headers.get('content-type')).toMatch(/wordprocessingml/);
-    expect(Buffer.from(await docx.arrayBuffer()).subarray(0, 2).toString()).toBe('PK');
+    expect(
+      Buffer.from(await docx.arrayBuffer())
+        .subarray(0, 2)
+        .toString(),
+    ).toBe('PK');
   });
 
   it('o bloqueio: outra conta com acesso de Editor à pasta não edita nem desbloqueia', async () => {

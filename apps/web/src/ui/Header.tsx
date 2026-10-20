@@ -7,6 +7,7 @@ import {
   Database,
   Eye,
   FileDown,
+  FileText,
   FolderOpen,
   HelpCircle,
   ImageDown,
@@ -38,6 +39,8 @@ import { ConnectionBadge } from './ConnectionBadge';
 import { renameProject, uploadLocalToCloud } from './cloud';
 import { computeVisibility } from '../canvas/derive';
 import { FORMAT_LABEL } from '@erd/model/types';
+import { DriveButton } from '../document/DriveButton';
+import { openDocForm } from '../document/useDocUi';
 
 function Popover({ button, children, align = 'left' }: { button: (open: boolean) => ReactNode; children: (close: () => void) => ReactNode; align?: 'left' | 'right' }) {
   const [open, setOpen] = useState(false);
@@ -351,11 +354,16 @@ export function Header() {
         </HeaderButton>
       )}
 
+      <HeaderButton title="Documento Word (dicionário de dados gerado do modelo)" onClick={() => openDocForm()}>
+        <FileText size={15} /> Documento
+      </HeaderButton>
+
       <div className="ml-auto flex items-center gap-1">
         <ConnectionBadge />
         {mode === 'remote' && project && (
           <>
             <PeerAvatars />
+            <DriveButton />
             <NotificationsBell />
             <button title="Versões" onClick={() => setVersions(true)} className="rounded p-1.5 text-slate-500 hover:bg-slate-100" data-testid="versions-button">
               <History size={16} />

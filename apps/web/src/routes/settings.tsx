@@ -10,6 +10,8 @@ import { ChangeToast } from '../ui/Dialogs';
 import { Avatar, LinkSharing, MembersList, Toggle } from '../ui/sharing';
 import { relTime, TopBar } from './Dashboard';
 import { AuthLayout } from './auth';
+import { DrivePanel } from '../document/DrivePanel';
+import { useDriveConfig, useDriveProject } from '../document/queries';
 
 function Section({ title, children, danger }: { title: string; children: ReactNode; danger?: boolean }) {
   return (
@@ -63,6 +65,7 @@ function AccessRequests({ projectId, highlight }: { projectId: string; highlight
 
 function DangerZone({ projectId, name }: { projectId: string; name: string }) {
   const members = useMembers(projectId);
+  const drive = useDriveProject(projectId);
   const nav = useNavigate();
   const qc = useQueryClient();
   const me = useMe();
@@ -85,7 +88,12 @@ function DangerZone({ projectId, name }: { projectId: string; name: string }) {
           className="rounded-md border border-red-300 px-2.5 py-1 text-[12.5px] text-red-700 hover:bg-red-50 disabled:opacity-50"
           onClick={async () => {
             const m = others.find((x) => x.userId === to);
-            if (!m || !confirm(`Transferir "${name}" para ${m.name}?`)) return;
+            // com o documento no Drive do dono atual, a confirmação explica o que acontece com ele (drive-docx-plan §6)
+            const inDrive = drive.data?.bindings.some((b) => b.fileId && b.status !== 'paused');
+            const driveMsg = inDrive
+              ? `\n\nO documento Word está no seu Google Drive. Depois da transferência, ${m?.name} precisa conectar o Drive dele e escolher uma pasta; o documento será criado lá e o arquivo no seu Drive será excluído definitivamente. Até lá, as publicações continuam no seu Drive.`
+              : '';
+            if (!m || !confirm(`Transferir "${name}" para ${m.name}?${driveMsg}`)) return;
             try {
               await ok(api.projects[':id'].transfer.$post({ param: { id: projectId }, json: { userId: to } }));
               showToast(`${m.name} agora é o dono`);
@@ -146,6 +154,23 @@ function RenameField({ projectId, name, disabled }: { projectId: string; name: s
   );
 }
 
+/** Documento Word no Google Drive: conta do dono e a pasta de cada canvas (drive-docx-plan §2.1) */
+function DocumentSection({ project }: { project: NonNullable<ReturnType<typeof useProject>['data']> }) {
+  const cfg = useDriveConfig();
+  if (!cfg.data?.enabled) return null;
+  return (
+    <Section title="Documento Word no Google Drive">
+      <div className="space-y-4">
+        {project.canvases
+          .filter((c) => c.kind === 'erd')
+          .map((c) => (
+            <DrivePanel key={c.id} project={project} canvasId={c.id} canvasName={project.canvases.length > 1 ? c.name : undefined} />
+          ))}
+      </div>
+    </Section>
+  );
+}
+
 /** /p/:id/settings — membros, pedidos de acesso, link, zona de perigo */
 export function ProjectSettingsPage() {
   const { projectId } = useParams({ strict: false }) as { projectId: string };
@@ -182,6 +207,7 @@ export function ProjectSettingsPage() {
             <Section title="Compartilhamento">
               <LinkSharing project={p} />
             </Section>
+            <DocumentSection project={p} />
             {can(p.role, 'delete', p.settings) && (
               <Section title="Zona de perigo" danger>
                 <DangerZone projectId={p.id} name={p.name} />
@@ -235,6 +261,7 @@ export function UserSettingsPage() {
               <Toggle checked={prefs.accessRequests} onChange={(v) => void save({ accessRequests: v })} label="Pedidos de acesso aos meus projetos" />
               <Toggle checked={prefs.decisions} onChange={(v) => void save({ decisions: v })} label="Respostas aos meus pedidos de acesso" />
               <Toggle checked={prefs.membership} onChange={(v) => void save({ membership: v })} label="Quando me adicionam a um projeto ou mudam meu papel" />
+              <Toggle checked={prefs.drive} onChange={(v) => void save({ drive: v })} label="Avisos do documento no Google Drive (edição pelo Drive, falhas, reconectar)" />
             </>
           )}
           <p className="mt-2 text-[11.5px] text-slate-400">Convites, confirmação de e-mail e redefinição de senha sempre são enviados.</p>

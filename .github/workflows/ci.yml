@@ -66,6 +66,8 @@ jobs:
       - run: docker compose --profile prod up --build -d --wait
         env:
           AUTH_SIGNUPS_PER_MINUTE: '100'
+          # o documento no Drive roda contra o Drive em memória
+          DRIVE_PROVIDER: fake
       - run: pnpm e2e
         env:
           URL: http://localhost:8081

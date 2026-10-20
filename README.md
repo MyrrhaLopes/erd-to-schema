@@ -2,7 +2,7 @@
 
 Canvas interativo de ERD em que **canvas, SQL (Postgres), Prisma e Drizzle são quatro vistas do mesmo modelo**. Editar qualquer uma atualiza as outras três, e o canvas se redesenha sozinho. Implementado a partir de [`docs/erd-builder-plan.md`](docs/erd-builder-plan.md).
 
-Monorepo pnpm + Turborepo, com contas, projetos na nuvem e o modo local sem conta. O plano de evolução está em [`docs/fullstack-collab-plan.md`](docs/fullstack-collab-plan.md). O dicionário de dados em Word publicado no Google Drive está planejado em [`docs/drive-docx-plan.md`](docs/drive-docx-plan.md).
+Monorepo pnpm + Turborepo, com contas, projetos na nuvem e o modo local sem conta. O plano de evolução está em [`docs/fullstack-collab-plan.md`](docs/fullstack-collab-plan.md). O dicionário de dados em Word publicado no Google Drive segue [`docs/drive-docx-plan.md`](docs/drive-docx-plan.md).
 
 ## Rodando local (com backend)
 
@@ -29,6 +29,8 @@ pnpm dev                  # web em http://localhost:5173 (+ API em :8080, via pr
 | `pnpm load` | teste de carga: 20 clientes editando um canvas de 200 tabelas (`URL`, `CLIENTS`, `TABLES`, `SECONDS`) |
 | `pnpm db:generate` | gera a migração SQL a partir do schema Drizzle (versionar junto com a mudança) |
 | `pnpm env:check` | valida o `.env` com o mesmo zod do boot do servidor |
+| `pnpm drive:smoke` | confere no Google Drive real o que o documento assume (bloqueio, revisões, exclusão definitiva), com duas contas de teste; não roda no CI |
+| `pnpm auth:encrypt-tokens` | cifra os tokens OAuth antigos (gravados antes de `encryptOAuthTokens`); rodar uma vez |
 
 ## Variáveis de ambiente
 
@@ -57,6 +59,8 @@ Daí em diante: PR → CI verde → merge → deploy automático.
 **Produção x staging:** duplique o ambiente (*Environments → New → Duplicate*) para ter `staging` com banco próprio; a produção deploya de `main` (com aprovação) e o staging do branch de desenvolvimento. Configure *usage limits* e alertas de gasto no workspace.
 
 **Backups:** além dos backups de volume do Postgres no Railway (diário e semanal, aba *Backups*), o workflow [`backup.yml`](.github/workflows/backup.yml) faz um `pg_dump` semanal cifrado (segredos `DATABASE_PUBLIC_URL` e `BACKUP_PASSPHRASE`) e guarda como artefato por 90 dias, fora do Railway.
+
+**Documento Word no Google Drive (opcional):** no Google Cloud do mesmo OAuth client, ative a **Drive API** e a **Picker API**, acrescente o escopo `https://www.googleapis.com/auth/drive.file` na tela de consentimento (é um escopo não sensível: sem auditoria de segurança) e crie uma **chave de API** restrita por *referrer* ao `APP_URL` e às duas APIs. No `server`: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_PICKER_API_KEY` e `GOOGLE_PROJECT_NUMBER` (o número do projeto, usado no `setAppId` do Picker). Sem essas variáveis, a funcionalidade some e só o "Baixar .docx" fica. O CSP do `web` já libera o Picker (`apis.google.com`, `docs.google.com`). Para dev e E2E sem Google, `DRIVE_PROVIDER=fake` usa um Drive em memória (recusado com `APP_URL` em HTTPS). Antes da primeira produção, rode `pnpm drive:smoke` (fase 0 do plano).
 
 **Observabilidade:** logs em JSON (pino) filtráveis por `level`, `canvasId` e `userId`; `GET /metrics` no `server` (formato Prometheus: conexões, documentos abertos, maior documento, tempo de parse do bot, timeouts do sandbox, updates recusados, 5xx, limite de taxa, pool do Postgres, memória). O `server` fica na rede privada (o Caddy só repassa `/api` e `/collab`); com `METRICS_TOKEN`, o endpoint exige o token.
 
@@ -93,6 +97,8 @@ Daí em diante: PR → CI verde → merge → deploy automático.
 - **Miniaturas** dos projetos no dashboard, desenhadas no servidor (SVG) a partir do layout.
 - **Limites:** projetos por conta, canvases por projeto, membros por projeto, versões por canvas, convites por hora, cadastros por minuto, requisições por minuto na API, tamanho e taxa de mensagens no WebSocket — todos configuráveis (veja `.env.example`).
 - **Autoria:** o que outra pessoa muda acende por alguns segundos na cor dela; **Visualização → Mostrar autoria** pinta cada tabela, coluna, nota e trecho de texto na cor de quem editou por último ("Bia · há 3 min").
+- **Documento Word (dicionário de dados):** o botão **Documento** gera, a partir do canvas, um `.docx` com a estrutura e a formatação do modelo de referência (A4 paisagem, capa, convenções, índice de módulos, uma seção por tabela com campos e relacionamentos, apêndices de UNIQUE e índices). Os **módulos** vêm das tags que começam com "Módulo" (ex.: `Módulo A — Cadastro e Pessoas`; a nota com o mesmo título vira a descrição). Um **formulário** preenche só o que o SQL não tem (capa, objetivos das convenções, regras de negócio, função de cada relação); descrições de tabela e coluna gravam no próprio modelo (`COMMENT ON`). O formulário é colaborativo, entra nas versões e no `.zip`. Pré-visualização ao lado e **Baixar .docx**, também no modo `/local`.
+- **Publicar no Google Drive:** o dono conecta o Drive dele (escopo `drive.file`) e escolhe a pasta pelo Google Picker. **Salvar no Drive** abre a tela **Revisar e publicar** (módulos, pendências, o que mudou, destino, pré-visualização); ao confirmar, o app salva uma versão protegida do canvas e atualiza sempre o mesmo arquivo, bloqueado para edição (`contentRestrictions` com `ownerRestricted`) e sem revisões antigas no Drive. **Reverter** é pelo histórico de publicações do app (restaura a versão do canvas e publica de novo); **trocar a pasta** cria o arquivo na nova e exclui definitivamente o antigo; a **transferência de posse** leva o documento para o Drive do novo dono quando ele escolher uma pasta. Uma auditoria a cada 6 h detecta edição, desbloqueio, movimentação ou exclusão pelo Drive, avisa o dono e a próxima publicação sobrescreve.
 - **Mudança de papel ao vivo:** a API publica o evento (Postgres `LISTEN/NOTIFY`) e o servidor de colaboração rebaixa, promove ou desconecta as conexões abertas.
 
 ### Atalhos (estilo Excalidraw/Eraser)
@@ -127,6 +133,8 @@ packages/sync/               o sync bot: texto ⇄ modelo (parse por bloco, patc
 packages/sandbox/            Drizzle do usuário num isolate V8 (isolated-vm) dentro de worker_threads
 packages/db/                 schema Drizzle do backend + migrações; packages/contracts: zod + can()
 packages/emails/             templates React Email; packages/canvas-kinds: contrato de tipo de canvas
+packages/docx/               dicionário de dados em Word: modelo → outline → .docx (função pura, roda na API e no worker)
+apps/api/src/drive/          Google Drive: provider (REST com fetch, e um falso em memória), tokens do dono, jobs
 packages/model/src/          tipos canônicos + capability matrix, reconcile(), tags, layout, .zip do projeto
 packages/model/src/formats/  sql | prisma | drizzle: generate.ts (modelo → texto) e parse.ts (texto → modelo)
 apps/web/src/sync/         motor de sync (status por painel, seq, debounce, conflitos) + cliente dos workers
