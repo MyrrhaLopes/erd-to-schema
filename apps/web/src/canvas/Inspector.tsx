@@ -661,7 +661,7 @@ export function Inspector() {
       </button>
       {!collapsed && (
         // no modo visualização o inspetor só mostra (fieldset desabilita todos os campos e botões)
-        <fieldset disabled={readOnly} className="min-w-0 overflow-y-auto px-3 pb-3 disabled:opacity-80">
+        <fieldset disabled={readOnly} className="min-h-0 min-w-0 overflow-y-auto px-3 pb-3 disabled:opacity-80">
           {body}
         </fieldset>
       )}
