@@ -660,9 +660,10 @@ export function Inspector() {
         {collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
       </button>
       {!collapsed && (
-        // no modo visualização o inspetor só mostra (fieldset desabilita todos os campos e botões)
-        <fieldset disabled={readOnly} className="min-h-0 min-w-0 overflow-y-auto px-3 pb-3 disabled:opacity-80">
-          {body}
+        // fieldset só desabilita os campos (modo visualização); como item flex ele ignora
+        // min-height:0 e deixa o conteúdo vazar por baixo sem rolar, então quem rola é o div
+        <fieldset disabled={readOnly} className="contents">
+          <div className={'min-h-0 min-w-0 overflow-y-auto px-3 pb-3' + (readOnly ? ' opacity-80' : '')}>{body}</div>
         </fieldset>
       )}
     </div>
