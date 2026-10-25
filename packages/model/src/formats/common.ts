@@ -85,6 +85,7 @@ export function directiveLines(project: Project, format: Format): string[] {
       if (r.reverseCardinality) s += ' ' + r.reverseCardinality;
       if (r.reverseLabel) s += ' ' + JSON.stringify(r.reverseLabel);
     }
+    if (r.comment) s += ' comment ' + JSON.stringify(r.comment);
     lines.push(s);
   }
   for (const t of schema.tables) {
@@ -129,7 +130,8 @@ export function applyDirectives(parsed: ParsedSchema, directives: RawDirective[]
   for (const d of directives) {
     const warn = (message: string) => parsed.warnings.push({ from: d.from, to: d.to, severity: 'warning', message });
     if (d.kind === 'ref') {
-      const [lhs, rhsRaw] = d.body.split(/\s*->\s*/);
+      // só a primeira seta separa as pontas: rótulos e comentário podem ter "->"
+      const [, lhs = d.body, rhsRaw] = d.body.match(/^(.*?)\s*->\s*(.*)$/) ?? [];
       if (!rhsRaw) {
         warn('@erd:ref precisa de "origem -> destino"');
         continue;
@@ -140,7 +142,22 @@ export function applyDirectives(parsed: ParsedSchema, directives: RawDirective[]
         warn('@erd:ref malformado');
         continue;
       }
-      const rest = rhsRaw.trim().slice(b[0].length).trim();
+      let rest = rhsRaw.trim().slice(b[0].length).trim();
+      // `comment "..."` fica no fim; procura a palavra fora das aspas dos rótulos
+      let comment: string | undefined;
+      for (const m of rest.matchAll(/"(?:[^"\\]|\\.)*"|(\S+)/g)) {
+        if (m[1]?.toLowerCase() !== 'comment') continue;
+        const q = rest.slice(m.index + m[0].length).match(/^\s*"((?:[^"\\]|\\.)*)"/);
+        if (q) {
+          try {
+            comment = JSON.parse(`"${q[1]}"`);
+          } catch {
+            comment = q[1];
+          }
+        }
+        rest = rest.slice(0, m.index).trim();
+        break;
+      }
       const from = findTable(schema, a[1].replace(/"/g, ''));
       const to = findTable(schema, b[1].replace(/"/g, ''));
       if (!from || !to) {
@@ -183,6 +200,7 @@ export function applyDirectives(parsed: ParsedSchema, directives: RawDirective[]
         showReverse: hasReverse ? true : undefined,
         reverseLabel,
         reverseCardinality: reverseCard,
+        comment,
       });
     } else {
       const m = d.body.match(/^([A-Za-z0-9_.$"]+)\s+(.+)$/);

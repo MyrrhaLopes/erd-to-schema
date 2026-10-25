@@ -195,6 +195,21 @@ describe('sync bot', () => {
     bot.stop();
   });
 
+  it('comentário da relação: canvas → SQL/Prisma, e editar o COMMENT ON CONSTRAINT volta ao modelo', async () => {
+    const doc = await seeded();
+    const bot = newBot(doc);
+    await bot.whenIdle({ flushTimers: true });
+    commit(doc, (d) => void (d.schema.relationships[0].comment = 'cliente do pedido'));
+    await bot.whenIdle({ flushTimers: true });
+    expect(text(doc, 'sql')).toContain("COMMENT ON CONSTRAINT orders_customer_id_fkey ON orders IS 'cliente do pedido';");
+    expect(text(doc, 'prisma')).toContain('/// cliente do pedido');
+    replaceIn(doc, 'sql', "IS 'cliente do pedido'", "IS 'quem comprou'");
+    await bot.whenIdle({ flushTimers: true });
+    expect(projectDoc(doc).schema.relationships[0].comment).toBe('quem comprou');
+    expect(text(doc, 'prisma')).toContain('/// quem comprou');
+    bot.stop();
+  });
+
   it('ponto fixo: texto canônico → parse → gerar é idempotente nos três formatos', async () => {
     const doc = await seeded();
     const bot = newBot(doc);

@@ -124,6 +124,8 @@ function identifySql(text: string, from: number, to: number): Block {
     const parts = m[1].split(/\s*\.\s*/);
     parts.pop();
     if (parts.length) b.tables.push(sqlKey(parts.join('.')));
+  } else if ((m = s.match(new RegExp(String.raw`^COMMENT\s+ON\s+CONSTRAINT\s+${NAME}\s+ON\s+${QNAME}`, 'i')))) {
+    b.tables.push(sqlKey(m[1]));
   } else if ((m = s.match(/^CREATE\s+TABLE\s*$/i))) {
     b.def = true;
   }

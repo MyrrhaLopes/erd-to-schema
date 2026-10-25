@@ -96,7 +96,12 @@ export function generatePrisma(project: Pick<Project, 'schema' | 'meta'>): strin
       args.push(`references: [${r.toColumns.map((c) => names.field.get(c) ?? columnById(to, c)?.name).join(', ')}]`);
       if (r.onDelete && r.onDelete !== 'no action') args.push(`onDelete: ${ACTION[r.onDelete]}`);
       if (r.onUpdate && r.onUpdate !== 'no action') args.push(`onUpdate: ${ACTION[r.onUpdate]}`);
-      rows.push([names.relFrom.get(r.id)!, toModel + (relOptional(schema, r) ? '?' : ''), `@relation(${args.join(', ')})`]);
+      rows.push([
+        ...docLines(r.comment, '  ').map((d) => '\0' + d),
+        names.relFrom.get(r.id)!,
+        toModel + (relOptional(schema, r) ? '?' : ''),
+        `@relation(${args.join(', ')})`,
+      ]);
     }
     // back-relations
     for (const r of fks) {

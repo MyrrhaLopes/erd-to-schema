@@ -220,6 +220,7 @@ const REL_FIELDS = [
   'showReverse',
   'reverseLabel',
   'reverseCardinality',
+  'comment',
 ] as const;
 
 export function writeRelationship(y: YEntity, _prev: Relationship | undefined, r: Relationship, w: Writer) {

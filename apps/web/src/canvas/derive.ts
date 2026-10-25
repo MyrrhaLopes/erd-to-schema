@@ -184,7 +184,7 @@ export function deriveEdges(project: Project): ErdEdge[] {
         r.onUpdate && r.onUpdate !== 'no action' ? `ON UPDATE ${r.onUpdate.toUpperCase()}` : '',
       ]
         .filter(Boolean)
-        .join(' · ');
+        .join(' · ') + (r.comment ? `\n${r.comment}` : '');
       edges.push({
         id: r.id,
         type: 'erd',
@@ -216,7 +216,7 @@ export function deriveEdges(project: Project): ErdEdge[] {
           start,
           end,
           label: r.label || 'nota',
-          detail: 'Relação somente de nota (não gera FK)',
+          detail: 'Relação somente de nota (não gera FK)' + (r.comment ? `\n${r.comment}` : ''),
           showReverse: r.showReverse,
           reverseLabel: r.reverseLabel,
           cardinality: r.cardinality,

@@ -105,6 +105,7 @@ interface RelField {
   onUpdate?: RefAction;
   list: boolean;
   optional: boolean;
+  comment?: string;
   range: { from: number; to: number };
   used?: boolean;
 }
@@ -188,6 +189,9 @@ export function parsePrisma(text: string): ParseOutcome {
       const attr = (name: string, group?: string) => attrs.find((a) => a.name === name && (group ? a.group === group : !a.group));
       const ft = p.fieldType;
       const typeName = typeof ft === 'string' ? ft : ft?.name;
+      const docs = [docComment(props, idx), typeof p.comment === 'string' && p.comment.startsWith('///') ? p.comment.replace(/^\/\/\/\s?/, '') : undefined]
+        .filter(Boolean)
+        .join('\n');
 
       if (typeof ft === 'string' && modelNames.has(ft)) {
         const rel = attr('relation');
@@ -203,6 +207,7 @@ export function parsePrisma(text: string): ParseOutcome {
           onUpdate: rel ? ACTIONS[keyArg(rel, 'onUpdate')] : undefined,
           list: !!p.array,
           optional: !!p.optional,
+          comment: docs || undefined,
           range,
         });
         return;
@@ -238,9 +243,6 @@ export function parsePrisma(text: string): ParseOutcome {
         table.primaryKey = [col.id];
         col.nullable = false;
       }
-      const docs = [docComment(props, idx), typeof p.comment === 'string' && p.comment.startsWith('///') ? p.comment.replace(/^\/\/\/\s?/, '') : undefined]
-        .filter(Boolean)
-        .join('\n');
       if (docs) col.comment = docs;
       if (p.name !== camelCase(colName)) meta[col.id] = { formatNames: { prisma: p.name } };
       table.columns.push(col);
@@ -315,6 +317,7 @@ export function parsePrisma(text: string): ParseOutcome {
       onDelete: rf.onDelete ?? 'no action',
       onUpdate: rf.onUpdate ?? 'no action',
     };
+    if (rf.comment) r.comment = rf.comment;
     relationships.push(r);
     relFieldNames.set(r.id, { from: rf.field.name, name: rf.name });
     // lado oposto

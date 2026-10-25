@@ -176,7 +176,7 @@ Tudo é gerado: cada parte vem do modelo (o que SQL, Prisma, Drizzle e o canvas 
 | Cardinalidade | Na notação do documento (`1 : N`, `N : 1`, `N : 0..1`, `1 : 0..1`, `1 : 1`, `N : N`). FK de saída: `N : 1`; `N : 0..1` se a FK é anulável; `1 : 1` ou `1 : 0..1` se as colunas da FK são únicas. FK de entrada: o inverso. Relação-nota: a `cardinality` gravada, convertida. Pivot oculto: `N : N`. |
 | FK / regra | "`Filha.col → Mãe.col`". Relação-nota: a ligação lógica entre as colunas. |
 | ON DELETE | `onDelete` em maiúsculas (`CASCADE`, `SET NULL`, `RESTRICT`); "NO ACTION" quando ausente. Relação-nota: "Aplicação". |
-| Função | Formulário: a função da relação **vista daquela tabela** (cada relação tem dois textos, um para cada lado). Relação-nota sem texto no formulário usa `label`/`reverseLabel`. Sem nada, "—". |
+| Função | Formulário: a função da relação **vista daquela tabela** (cada relação tem dois textos, um para cada lado). Sem texto no formulário para o lado, usa o comentário da relação (`Relationship.comment`, editado no Inspector), e depois, na relação-nota, `label`/`reverseLabel`. Sem nada, "—". |
 
 ### 1.4 O formulário: o que o SQL não preenche
 
@@ -540,4 +540,5 @@ Cada fase pode ir para produção sozinha.
 - **`drive_pending_deletions`** ganhou `folder_id`, `folder_name`, `next_attempt_at` e `gave_up_at` (a interface mostra "exclua manualmente" depois de 24 h). A varredura roda a cada 10 min.
 - **Uma fila só:** todos os jobs do Drive estão na fila `drive` (política `singleton` do pg-boss com `singletonKey = canvasId`), na mesma instância pg-boss dos e-mails, para publicação, troca de pasta, limpeza e desconexão do mesmo canvas nunca rodarem juntas.
 - **Drive falso no E2E:** `DRIVE_PROVIDER=fake` é aceito também nas imagens de produção, desde que o `APP_URL` não seja HTTPS (o E2E do CI roda contra `http://localhost:8081`).
+- **Comentário de relação:** `Relationship.comment` (Inspector da relação) alimenta a coluna Função dos dois lados quando o formulário está vazio para o lado, e resolve a pendência "relação sem função". Volta para o SQL como `COMMENT ON CONSTRAINT` (FK), para o Prisma como `///` no campo de relação (FK) e para os três formatos como `comment "..."` na diretiva `@erd:ref` (relação-nota). O N:N via pivot oculto continua só no formulário.
 - **Publicação automática** (fase 4): `drive_bindings.auto_publish`, ligada pelo dono na aba Drive; salvar uma versão nomeada enfileira a publicação sem a tela de revisão.

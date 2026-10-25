@@ -81,6 +81,22 @@ describe('Prisma', () => {
     expect(text).not.toContain('model PostToTag');
   });
 
+  it('relationship comments become /// on the relation field', async () => {
+    const s = await sql(`
+      CREATE TABLE users (id serial PRIMARY KEY);
+      CREATE TABLE posts (id serial PRIMARY KEY, author_id int NOT NULL REFERENCES users);
+      COMMENT ON CONSTRAINT posts_author_id_fkey ON posts IS E'autor do post\\nobrigatório';`);
+    const base = reconcile(emptyProject(), s, 'sql', columnSql);
+    const text = generatePrisma(base);
+    expect(text).toContain('  /// autor do post\n  /// obrigatório\n  author');
+    const r = reconcile(base, prisma(text), 'prisma', prismaColumnSignature);
+    expect(r.changes).toEqual([]);
+    expect(r.schema.relationships[0].comment).toBe('autor do post\nobrigatório');
+    expect(generateSql(r)).toBe(generateSql(base));
+    const edited = reconcile(base, prisma(text.replace('/// obrigatório', '/// opcional')), 'prisma', prismaColumnSignature);
+    expect(edited.schema.relationships[0].comment).toBe('autor do post\nopcional');
+  });
+
   it('keeps CHECK constraints and partial indexes after editing prisma', async () => {
     const s = await sql(`
       CREATE TABLE users (id serial PRIMARY KEY, age int NOT NULL, email text, CHECK (age >= 0));
