@@ -292,6 +292,11 @@ export function reconcile(
       if (mapped.showReverse === undefined) mapped.showReverse = pr.showReverse;
       if (mapped.reverseLabel === undefined) mapped.reverseLabel = pr.reverseLabel;
       if (mapped.reverseCardinality === undefined) mapped.reverseCardinality = pr.reverseCardinality;
+      // relação-nota: o comentário vai na diretiva, que todo formato lê; FK depende do formato
+      // (o M:N implícito do Prisma não tem campo de relação onde escrever o da FK do pivot)
+      const prov = parsed.meta[nr.fromTable]?.provenance;
+      const implicitPivot = prov?.kind === 'pivot' && prov.implicit === 'prisma';
+      if (!(mapped.kind === 'note' ? caps.noteRelations : caps.relationComments) || implicitPivot) mapped.comment = pr.comment;
     } else {
       changes.push(nr.kind === 'fk' ? 'Relação FK adicionada' : 'Relação-nota adicionada');
     }

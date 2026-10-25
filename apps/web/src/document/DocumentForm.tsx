@@ -126,7 +126,9 @@ function TableSection({ table, module, content, readOnly, onlyMissing }: { table
       )}
       {rels.length > 0 && (!onlyMissing || missingRels.length > 0) && (
         <div>
-          <div className="mb-1 text-[10.5px] text-slate-500">Função das relações (vista desta tabela)</div>
+          <div className="mb-1 text-[10.5px] text-slate-500">
+            Função das relações (vista desta tabela) <span className="text-slate-400">· vazio = o comentário da relação</span>
+          </div>
           <div className="grid grid-cols-[minmax(120px,max-content)_1fr] items-center gap-x-2 gap-y-1">
             {(onlyMissing ? missingRels : rels).map((r) => {
               const cur = content.relationships[r.key];

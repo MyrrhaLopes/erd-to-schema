@@ -84,6 +84,9 @@ export function generateSql(project: Pick<Project, 'schema' | 'meta'>): string {
     if (t.comment) comments.push(`COMMENT ON TABLE ${qualified(t)} IS ${sqlString(t.comment)};`);
     for (const c of t.columns) if (c.comment) comments.push(`COMMENT ON COLUMN ${qualified(t)}.${qi(c.name)} IS ${sqlString(c.comment)};`);
   }
+  for (const r of fks)
+    if (r.comment)
+      comments.push(`COMMENT ON CONSTRAINT ${qi(r.name ?? defaultFkName(schema, r))} ON ${qualified(tableById(schema, r.fromTable)!)} IS ${sqlString(r.comment)};`);
   if (comments.length) out.push(comments.join('\n'));
 
   const directives = directiveLines(project as Project, 'sql');

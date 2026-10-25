@@ -79,6 +79,7 @@ const schemaArb: fc.Arbitrary<SchemaModel> = fc
           to: fc.nat(sourceTables.length - 1),
           nullable: fc.boolean(),
           onDelete: fc.constantFrom('no action', 'cascade', 'set null', 'restrict'),
+          comment: fc.option(fc.constantFrom('autor', "it's -> ok"), { nil: undefined }),
         }),
         { maxLength: 4 },
       )
@@ -103,6 +104,7 @@ const schemaArb: fc.Arbitrary<SchemaModel> = fc
             toColumns: [pkCol.id],
             onDelete: f.onDelete as Relationship['onDelete'],
             onUpdate: 'no action',
+            ...(f.comment ? { comment: f.comment } : {}),
           });
         }
         return {

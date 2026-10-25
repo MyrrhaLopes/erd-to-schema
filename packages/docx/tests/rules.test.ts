@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildOutline, computeModules, splitModuleTag, markdownToBlocks, type Block } from '../src';
+import { emptyDocContent } from '@erd/model/docContent';
 import { cessProject, fromSql } from './helpers';
 
 const meta = { projectName: 'CESS', version: 3, publishedAt: new Date('2026-10-20T12:00:00Z') };
@@ -119,6 +120,21 @@ describe('relacionamentos (§1.3)', () => {
         .cells.slice(1, 2)
         .concat(user.rows.find((r) => r.cells[0] === 'User → Project (client)')!.cells[4]),
     ).toEqual(['0..1 : N', 'projetos em que é cliente']);
+  });
+
+  it('comentário da relação vira a Função dos dois lados; o formulário vence', async () => {
+    const p = await fromSql(`CREATE TABLE customers (id int PRIMARY KEY, email text);
+CREATE TABLE orders (id int PRIMARY KEY, customer_id int NOT NULL REFERENCES customers, referral text);
+COMMENT ON CONSTRAINT orders_customer_id_fkey ON orders IS 'cliente que fez o pedido';
+-- @erd:ref orders(referral) -> customers(email) N:1 "indicação" comment "resolvida na aplicação"`);
+    const fk = p.schema.relationships.find((r) => r.kind === 'fk')!;
+    const fn = (table: string) => relsOf(buildOutline(p, meta).outline.blocks, table)!.rows.map((r) => r.cells[4]);
+    expect(fn('orders')).toEqual(['cliente que fez o pedido', 'resolvida na aplicação']);
+    expect(fn('customers')).toEqual(['cliente que fez o pedido', 'resolvida na aplicação']);
+    expect(buildOutline(p, meta).review.pending.some((x) => x.kind === 'relationship-function')).toBe(false);
+    p.doc = { ...emptyDocContent(), relationships: { [fk.id]: { toSide: 'pedidos do cliente' } } };
+    expect(fn('orders')[0]).toBe('cliente que fez o pedido');
+    expect(fn('customers')[0]).toBe('pedidos do cliente');
   });
 });
 

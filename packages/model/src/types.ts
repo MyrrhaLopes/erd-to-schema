@@ -101,6 +101,8 @@ export interface Relationship {
   showReverse?: boolean;
   reverseLabel?: string;
   reverseCardinality?: Cardinality;
+  /** Descrição da relação; no documento Word vira a "Função" quando o formulário não tem texto para o lado */
+  comment?: string;
 }
 
 export interface SchemaModel {
@@ -206,6 +208,7 @@ export type Feature =
   | 'indexMethod'
   | 'tableComments'
   | 'columnComments'
+  | 'relationComments'
   | 'noteRelations'
   | 'tags'
   | 'refActions'
@@ -224,6 +227,7 @@ export const CAPABILITIES: Record<Format, Record<Feature, boolean>> = {
     indexMethod: true,
     tableComments: true,
     columnComments: true,
+    relationComments: true, // FK: `COMMENT ON CONSTRAINT`; relação-nota: `comment "..."` na diretiva
     noteRelations: true, // via `-- @erd:ref`
     tags: true, // via `-- @erd:tags`
     refActions: true,
@@ -236,6 +240,7 @@ export const CAPABILITIES: Record<Format, Record<Feature, boolean>> = {
     indexMethod: false,
     tableComments: true, // `///` doc comments
     columnComments: true,
+    relationComments: true, // FK: `///` no campo de relação; relação-nota: na diretiva
     noteRelations: true, // via `// @erd:ref`
     tags: true,
     refActions: true,
@@ -248,6 +253,7 @@ export const CAPABILITIES: Record<Format, Record<Feature, boolean>> = {
     indexMethod: true,
     tableComments: false, // comentários JS se perdem ao executar o código
     columnComments: false,
+    relationComments: false, // só nas relações-nota (diretiva); o de FK é preservado
     noteRelations: true, // via `// @erd:ref` (lido por scan de linhas)
     tags: true,
     refActions: true,

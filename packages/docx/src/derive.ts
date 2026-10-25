@@ -166,7 +166,7 @@ export interface RelRow {
   cells: [string, string, string, string, string];
   /** Rótulo para desambiguar várias relações com a mesma tabela */
   label: string;
-  /** Função veio do formulário (ou do rótulo da relação-nota)? */
+  /** Função veio do formulário, do comentário da relação ou do rótulo da relação-nota? */
   hasFunction: boolean;
 }
 
@@ -193,10 +193,11 @@ export function relationshipRows(project: Pick<Project, 'schema' | 'meta'>, t: T
     logical: boolean;
   }
   const rows: Raw[] = [];
-  const fnOf = (key: Id, side: 'from' | 'to', fallback?: string) => {
+  // texto do formulário para o lado > comentário da relação > rótulo da relação-nota
+  const fnOf = (key: Id, side: 'from' | 'to', ...fallbacks: (string | undefined)[]) => {
     const e = content.relationships[key];
     const v = (side === 'from' ? e?.fromSide : e?.toSide)?.trim();
-    return v || fallback?.trim() || undefined;
+    return v || fallbacks.map((f) => f?.trim()).find(Boolean) || undefined;
   };
   for (const r of schema.relationships) {
     if (r.fromTable !== t.id && r.toTable !== t.id) continue;
@@ -213,7 +214,7 @@ export function relationshipRows(project: Pick<Project, 'schema' | 'meta'>, t: T
         card: side === 'from' ? m : invert(m),
         rule: ends(schema, r),
         onDelete: (r.onDelete ?? 'no action').toUpperCase(),
-        fn: fnOf(r.id, side),
+        fn: fnOf(r.id, side, r.comment),
         logical: false,
       });
     } else {
@@ -226,7 +227,7 @@ export function relationshipRows(project: Pick<Project, 'schema' | 'meta'>, t: T
         card: side === 'from' ? m : invert(m),
         rule: ends(schema, r),
         onDelete: 'Aplicação',
-        fn: fnOf(r.id, side, side === 'from' ? r.label : r.reverseLabel),
+        fn: fnOf(r.id, side, r.comment, side === 'from' ? r.label : r.reverseLabel),
         logical: true,
       });
     }

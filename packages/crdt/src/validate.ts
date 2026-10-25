@@ -63,6 +63,7 @@ export const RelationshipZ = z.object({
   showReverse: opt(z.boolean()),
   reverseLabel: opt(z.string().max(1000)),
   reverseCardinality: opt(Card),
+  comment: opt(z.string().max(10_000)),
 });
 
 const finite = z.number().refine(Number.isFinite);

@@ -4,6 +4,7 @@ import { normalizeBase } from '../../columnType';
 import { newId } from '../../naming';
 import { tableKey } from '../../schema';
 import { applyDirectives, scanDirectives, type Diagnostic, type ParseOutcome, type ParsedSchema } from '../common';
+import { defaultFkName } from './generate';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Node = any;
@@ -301,6 +302,8 @@ export async function parseSql(text: string, pgParse: PgParse): Promise<ParseOut
   const tables = new Map<string, Table>();
   const enums: EnumType[] = [];
   const fks: PendingFk[] = [];
+  /** `COMMENT ON CONSTRAINT`: só se resolve depois das FKs */
+  const fkComments: { table: Table; name: string; comment?: string; from: number; to: number }[] = [];
   const warnings: Diagnostic[] = [];
 
   const findTable = (rel: Node): Table | undefined => {
@@ -508,6 +511,12 @@ export async function parseSql(text: string, pgParse: PgParse): Promise<ParseOut
           const col = t?.columns.find((c) => c.name === colName);
           if (col) col.comment = s.comment ?? undefined;
           else warn(`COMMENT: coluna "${tname}.${colName}" não encontrada`);
+        } else if (s.objtype === 'OBJECT_TABCONSTRAINT') {
+          const conName = items.pop()!;
+          const tname = items.pop()!;
+          const t = findTable({ relname: tname, schemaname: items[0] });
+          if (t) fkComments.push({ table: t, name: conName, comment: s.comment ?? undefined, ...range });
+          else warn(`COMMENT: tabela "${tname}" não encontrada`);
         } else warn('COMMENT ignorado', 'info');
         break;
       }
@@ -553,6 +562,12 @@ export async function parseSql(text: string, pgParse: PgParse): Promise<ParseOut
       onDelete: fk.onDelete,
       onUpdate: fk.onUpdate,
     });
+  }
+
+  for (const c of fkComments) {
+    const r = parsed.schema.relationships.find((x) => x.fromTable === c.table.id && (x.name ?? defaultFkName(parsed.schema, x)) === c.name);
+    if (r) r.comment = c.comment;
+    else warnings.push({ from: c.from, to: c.to, severity: 'info', message: `COMMENT: constraint "${c.name}" não é uma FK conhecida (ignorado)` });
   }
 
   applyDirectives(parsed, scanDirectives(text));

@@ -418,6 +418,18 @@ function RelationshipInspector({ id }: { id: Id }) {
       <div className="flex flex-wrap items-center gap-1 text-slate-600">
         {endpoint(from, r.fromColumns)} → {endpoint(to, r.toColumns)}
       </div>
+      <label className="block text-[10px] text-slate-500">
+        Comentário
+        <CommitInput
+          multiline
+          value={r.comment ?? ''}
+          placeholder="ex.: cliente do projeto"
+          onCommit={(v) => updateRelationship(id, (x) => void (x.comment = v.trim() || undefined))}
+        />
+        <span className="mt-0.5 block text-[10px] text-slate-400">
+          {r.kind === 'fk' ? 'Vai para o SQL como COMMENT ON CONSTRAINT' : 'Fica na diretiva @erd:ref'} e é a Função da relação no documento Word.
+        </span>
+      </label>
       {r.kind === 'fk' ? (
         <>
           <div className="text-[11px] text-slate-500">

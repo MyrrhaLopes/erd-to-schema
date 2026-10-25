@@ -170,4 +170,34 @@ CREATE TABLE users (
     expect(r.schema.relationships[0].reverseCardinality).toBe('1:N');
     expect(r.schema.relationships[0].reverseLabel).toBe('possui pedidos');
   });
+
+  it('round-trips relationship comments: COMMENT ON CONSTRAINT (FK) and the @erd:ref directive (note)', async () => {
+    const s = await sql(`
+      CREATE TABLE customers (id serial PRIMARY KEY, email text);
+      CREATE TABLE orders (id serial PRIMARY KEY, customer_id int REFERENCES customers, referral text);
+      ALTER TABLE orders ADD CONSTRAINT orders_ref FOREIGN KEY (referral) REFERENCES customers (email);
+      COMMENT ON CONSTRAINT orders_customer_id_fkey ON orders IS 'cliente que fez o pedido';
+      COMMENT ON CONSTRAINT orders_ref ON public.orders IS 'it''s the referral';
+      COMMENT ON CONSTRAINT nope ON orders IS 'x';
+      -- @erd:ref orders(referral) -> customers(email) N:1 "indicação -> cliente" reverse "indicou" comment "resolvida na \\"aplicação\\" -> sem FK"
+    `);
+    const [fk, named, note] = s.schema.relationships;
+    expect(fk.comment).toBe('cliente que fez o pedido');
+    expect(named.comment).toBe("it's the referral");
+    expect(note).toMatchObject({ kind: 'note', label: 'indicação -> cliente', showReverse: true, reverseLabel: 'indicou', comment: 'resolvida na "aplicação" -> sem FK' });
+    expect(s.warnings.some((w) => w.message.includes('"nope"'))).toBe(true);
+
+    const base = reconcile(emptyProject(), s, 'sql', columnSql);
+    const text = generateSql(base);
+    expect(text).toContain(`COMMENT ON CONSTRAINT orders_customer_id_fkey ON orders IS 'cliente que fez o pedido';`);
+    expect(text).toContain('comment "resolvida na \\"aplicação\\" -> sem FK"');
+    const again = reconcile(base, await sql(text), 'sql', columnSql);
+    expect(again.changes).toEqual([]);
+    expect(generateSql(again)).toBe(text);
+
+    // removido do SQL: o comentário some; Drizzle não expressa o da FK e o preserva
+    const cleared = reconcile(base, await sql(text.replace(/COMMENT ON CONSTRAINT orders_customer_id_fkey .*\n/, '')), 'sql', columnSql);
+    expect(cleared.schema.relationships.find((r) => r.id === fk.id)?.comment).toBeUndefined();
+    expect(generateDrizzle(base)).toContain('comment "resolvida na');
+  });
 });
