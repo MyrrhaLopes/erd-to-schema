@@ -49,7 +49,7 @@ export function DriveButton() {
           onClick={() => set({ review: {} })}
           disabled={!!publishing}
           title={dirty ? 'Há mudanças não publicadas' : 'O documento no Drive está em dia'}
-          className="relative flex h-8 items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 text-[12.5px] text-emerald-800 hover:bg-emerald-100 disabled:opacity-70"
+          className="relative flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-emerald-200 bg-emerald-50 px-2.5 text-[12.5px] text-emerald-800 hover:bg-emerald-100 disabled:opacity-70"
           data-testid="save-to-drive"
         >
           {publishing ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />}

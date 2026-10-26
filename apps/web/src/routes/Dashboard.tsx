@@ -2,7 +2,7 @@ import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import * as Y from 'yjs';
-import { Database, FolderOpen, HardDrive, LogOut, Plus, Search, Settings, Users, X } from 'lucide-react';
+import { FolderOpen, HardDrive, LogOut, Plus, Search, Settings, Users, X } from 'lucide-react';
 import type { ProjectSummary } from '@erd/contracts';
 import { codeText, fromProject } from '@erd/crdt';
 import { placeNewEntities } from '@erd/model/project';
@@ -29,10 +29,7 @@ export function TopBar({ children }: { children?: ReactNode }) {
   return (
     <header className="flex h-12 items-center gap-3 border-b border-slate-200 bg-white px-4">
       <Link to="/" className="flex items-center gap-2 text-slate-800">
-        <span className="flex h-7 w-7 items-center justify-center rounded-md bg-indigo-600 text-white">
-          <Database size={15} />
-        </span>
-        <span className="text-[14px] font-semibold">EasiER</span>
+        <span className="text-[16px] font-semibold text-indigo-600">EasiER</span>
       </Link>
       {children}
       <div className="ml-auto flex items-center gap-2">

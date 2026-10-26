@@ -4,7 +4,6 @@ import {
   History,
   ChevronDown,
   CloudUpload,
-  Database,
   Eye,
   FileDown,
   FileText,
@@ -225,11 +224,7 @@ export function Header() {
           <Link to="/" title="Voltar aos projetos" className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100" data-testid="back-to-dashboard">
             <ArrowLeft size={16} />
           </Link>
-        ) : (
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-indigo-600 text-white">
-            <Database size={15} />
-          </span>
-        )}
+        ) : null}
         <input
           value={draftName}
           readOnly={readOnly}

@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
-import { Database, Loader2, MailCheck } from 'lucide-react';
+import { Loader2, MailCheck } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { authClient } from '../api/client';
 import { keys, useMe } from '../api/queries';
@@ -10,10 +10,7 @@ export function AuthLayout({ title, children, footer }: { title: string; childre
     <div className="flex min-h-full items-center justify-center bg-slate-50 p-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex items-center justify-center gap-2 text-slate-800">
-          <span className="flex h-8 w-8 items-center justify-center rounded-md bg-indigo-600 text-white">
-            <Database size={16} />
-          </span>
-          <span className="text-[15px] font-semibold">EasiER</span>
+          <span className="text-[17px] font-semibold text-indigo-600">EasiER</span>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <h1 className="mb-4 text-[16px] font-semibold text-slate-800">{title}</h1>
