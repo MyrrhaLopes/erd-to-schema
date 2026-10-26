@@ -17,7 +17,7 @@ export interface DataDictionary {
 export async function buildDataDictionary(project: DocProject, meta: DocMeta): Promise<DataDictionary> {
   const { outline, review } = buildOutline(project, meta);
   const title = project.doc?.cover.title.trim() || MAIN_TITLE_FALLBACK;
-  const bytes = await pack(outline, { title, creator: 'ERD Builder', publishedAt: meta.publishedAt });
+  const bytes = await pack(outline, { title, creator: 'EasiER', publishedAt: meta.publishedAt });
   return { bytes, outline, review };
 }
 

@@ -84,6 +84,6 @@ export class DriveError extends Error {
   }
 }
 
-export const DRIVE_FILE_DESCRIPTION = 'Gerado pelo ERD Builder. Não edite nem reverta pelo Drive: use o histórico do app.';
-export const DRIVE_LOCK_REASON = 'Documento gerado pelo ERD Builder. Edições e reversões só pelo app.';
+export const DRIVE_FILE_DESCRIPTION = 'Gerado pelo EasiER. Não edite nem reverta pelo Drive: use o histórico do app.';
+export const DRIVE_LOCK_REASON = 'Documento gerado pelo EasiER. Edições e reversões só pelo app.';
 export const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';

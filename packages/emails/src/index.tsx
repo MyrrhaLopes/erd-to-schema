@@ -8,7 +8,7 @@ import { render } from '@react-email/render';
  * a mensagem opcional de um pedido de acesso aparece escapada (o React escapa) e truncada.
  */
 
-const APP = 'ERD Builder';
+const APP = 'EasiER';
 
 function Layout({ preview, title, children, footer }: { preview: string; title: string; children: ReactNode; footer?: ReactNode }) {
   return (
@@ -24,7 +24,7 @@ function Layout({ preview, title, children, footer }: { preview: string; title: 
           {children}
           <Hr style={{ borderColor: '#e2e8f0', margin: '24px 0 12px' }} />
           <Text style={{ color: '#94a3b8', fontSize: 11, margin: 0 }}>
-            {footer ?? 'Você recebeu este e-mail porque alguém usou este endereço no ERD Builder. Se não foi você, ignore-o.'}
+            {footer ?? 'Você recebeu este e-mail porque alguém usou este endereço no EasiER. Se não foi você, ignore-o.'}
           </Text>
         </Container>
       </Body>

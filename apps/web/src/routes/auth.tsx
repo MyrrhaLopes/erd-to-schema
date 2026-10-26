@@ -13,7 +13,7 @@ export function AuthLayout({ title, children, footer }: { title: string; childre
           <span className="flex h-8 w-8 items-center justify-center rounded-md bg-indigo-600 text-white">
             <Database size={16} />
           </span>
-          <span className="text-[15px] font-semibold">ERD Builder</span>
+          <span className="text-[15px] font-semibold">EasiER</span>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <h1 className="mb-4 text-[16px] font-semibold text-slate-800">{title}</h1>

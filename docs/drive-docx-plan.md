@@ -245,10 +245,10 @@ Todo arquivo é criado já bloqueado:
   "parents": ["<folderId>"],
   "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // sem converter para Google Docs
   "appProperties": { "erdCanvasId": "...", "erdProjectId": "..." },
-  "description": "Gerado pelo ERD Builder. Não edite nem reverta pelo Drive: use o histórico do app.",
+  "description": "Gerado pelo EasiER. Não edite nem reverta pelo Drive: use o histórico do app.",
   "writersCanShare": false,
   "contentRestrictions": [{ "readOnly": true, "ownerRestricted": true,
-    "reason": "Documento gerado pelo ERD Builder. Edições e reversões só pelo app." }]
+    "reason": "Documento gerado pelo EasiER. Edições e reversões só pelo app." }]
 }
 ```
 

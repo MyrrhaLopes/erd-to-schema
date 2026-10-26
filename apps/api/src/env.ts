@@ -15,7 +15,7 @@ export const EnvZ = z
     MAIL_DRIVER: z.enum(['resend', 'smtp', 'console', 'memory']).default('console'),
     RESEND_API_KEY: opt,
     SMTP_URL: opt,
-    EMAIL_FROM: z.string().min(3).default('ERD Builder <noreply@localhost>'),
+    EMAIL_FROM: z.string().min(3).default('EasiER <noreply@localhost>'),
     GITHUB_CLIENT_ID: opt,
     GITHUB_CLIENT_SECRET: opt,
     GOOGLE_CLIENT_ID: opt,

@@ -1,4 +1,4 @@
-# ERD Builder → plataforma colaborativa: plano de arquitetura
+# EasiER → plataforma colaborativa: plano de arquitetura
 
 > Plano para transformar o mini-app local (Vite + React, estado em zustand, autosave em IndexedDB) numa aplicação fullstack em monorepo, com contas de usuário, múltiplos projetos, compartilhamento com permissões e edição colaborativa em tempo real no canvas. Escrito a partir do código atual (`src/store`, `src/sync`, `src/model`) e pensado para ser executado em fases, cada uma entregável e testável.
 
@@ -1009,7 +1009,7 @@ BETTER_AUTH_SECRET=<gerado>
 COLLAB_JWT_SECRET=<gerado>
 MAIL_DRIVER=resend
 RESEND_API_KEY=<do painel do Resend>
-EMAIL_FROM="ERD Builder <notificacoes@mail.seudominio.com>"
+EMAIL_FROM="EasiER <notificacoes@mail.seudominio.com>"
 GITHUB_CLIENT_ID=... GITHUB_CLIENT_SECRET=...
 GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=...
 RAILWAY_DEPLOYMENT_DRAINING_SECONDS=30

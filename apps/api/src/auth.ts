@@ -17,7 +17,7 @@ export function createAuth(deps: { db: Db; env: Env; mailer: Mailer; log: Logger
     void mail.then((m) => mailer.send({ to, ...m })).catch((e) => log.error({ err: e, to }, 'falha ao enviar e-mail de autenticação'));
 
   return betterAuth({
-    appName: 'ERD Builder',
+    appName: 'EasiER',
     baseURL: env.BETTER_AUTH_URL,
     basePath: '/api/auth',
     secret: env.BETTER_AUTH_SECRET,

@@ -29,6 +29,6 @@ describe('templates de e-mail', () => {
       emails.driveAlert({ project: 'Loja', title: 'Edição externa', message: 'Bia editou pelo Drive', url: 'u', prefsUrl: 'p' }),
       emails.projectTransferred({ project: 'Loja', by: 'Ana', url: 'u', driveNote: true }),
     ]);
-    for (const e of all) expect(e.html).toContain('ERD Builder');
+    for (const e of all) expect(e.html).toContain('EasiER');
   });
 });

@@ -1,4 +1,4 @@
-# ERD Builder — plano de arquitetura e contexto da sessão
+# EasiER — plano de arquitetura e contexto da sessão
 
 > Documento gerado para permitir continuar este planejamento/implementação em outra sessão (ex.: Claude Code na nuvem). Contém o pedido original, as decisões já tomadas e o plano de arquitetura completo, incluindo a revisão técnica detalhada de um agente de planejamento.
 

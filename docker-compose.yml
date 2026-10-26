@@ -40,7 +40,7 @@ services:
       COLLAB_JWT_SECRET: prod-local-collab-prod-local-collab-xx
       MAIL_DRIVER: smtp
       SMTP_URL: smtp://mailpit:1025
-      EMAIL_FROM: ERD Builder <noreply@localhost>
+      EMAIL_FROM: EasiER <noreply@localhost>
       RAILWAY_DEPLOYMENT_DRAINING_SECONDS: 30
       METRICS_TOKEN: ${METRICS_TOKEN:-}
       # o e2e cria várias contas por minuto do mesmo IP (em produção, o padrão é 5)

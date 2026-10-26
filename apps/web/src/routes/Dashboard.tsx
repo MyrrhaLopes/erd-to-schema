@@ -32,7 +32,7 @@ export function TopBar({ children }: { children?: ReactNode }) {
         <span className="flex h-7 w-7 items-center justify-center rounded-md bg-indigo-600 text-white">
           <Database size={15} />
         </span>
-        <span className="text-[14px] font-semibold">ERD Builder</span>
+        <span className="text-[14px] font-semibold">EasiER</span>
       </Link>
       {children}
       <div className="ml-auto flex items-center gap-2">
